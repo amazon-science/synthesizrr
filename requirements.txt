@@ -61,7 +61,7 @@ et-xmlfile==1.1.0
 evaluate==0.4.2
 executing==2.0.1
 faiss-cpu==1.8.0
-fastapi==0.108.0
+fastapi==0.109.1
 fastjsonschema==2.19.1
 fastparquet==2024.5.0
 filelock==3.14.0
