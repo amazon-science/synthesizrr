@@ -232,7 +232,7 @@ sortedcontainers==2.4.0
 soupsieve==2.5
 sqlalchemy==2.0.30
 stack-data==0.6.3
-starlette==0.32.0.post1
+starlette==0.36.2
 statsmodels==0.14.2
 streamlit==1.35.0
 sympy==1.12.1
