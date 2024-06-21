@@ -16,7 +16,7 @@ conda create -n synthesizrr python=3.11.8 --yes
 conda activate synthesizrr 
 pip install uv   ## For super-fast installation
 
-uv pip install -r hft3_requirements.txt
+uv pip install -r requirements.txt
 
 uv pip install "spacy==3.7.4" "spacy-transformers==1.3.5"
 uv pip install "setuptools==69.5.1"
