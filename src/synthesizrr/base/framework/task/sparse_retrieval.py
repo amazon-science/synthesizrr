@@ -1,12 +1,13 @@
+import copy
 from typing import *
 from abc import ABC, abstractmethod
-
 import ray
-import time, glob, os, sys, boto3, numpy as np, pandas as pd, json, requests, gc, math, multiprocessing as mp
+import time, glob, os, sys, boto3, numpy as np, pandas as pd, json, requests, gc, math, multiprocessing as mp, functools
 from synthesizrr.base.util import is_list_like, Parameters, MappedParameters, optional_dependency, Registry, append_to_keys, \
     MutableParameters, Schema, only_item, set_param_from_alias, wait, as_tuple, as_list, str_normalize, \
     INDEX_COL_DEFAULT_NAME, AutoEnum, auto, safe_validate_arguments, type_str, Timer, StringUtil, get_default, \
-    dispatch, dispatch_executor, accumulate, accumulate_iter, ProgressBar, best_k, keep_keys, format_exception_msg
+    dispatch, dispatch_executor, accumulate, accumulate_iter, ProgressBar, best_k, keep_keys, format_exception_msg, \
+    ThreadPoolExecutor, ProcessPoolExecutor, iter_batches, get_result, check_isinstance
 from synthesizrr.base.framework.ray_base import ActorComposite
 from synthesizrr.base.data import ScalableDataFrame, ScalableSeries, ScalableSeriesRawType, ScalableDataFrameRawType, FileMetadata
 from synthesizrr.base.framework import Dataset, load_dataset, Algorithm
@@ -53,6 +54,9 @@ class BM25IndexStoreDoc(Parameters):
         assert len(doc_id) > 0
         return doc_id
 
+    def copy_without_doc(self):
+        return self.update_params(doc=None)
+
 
 class BM25DistanceMetric(AutoEnum):
     BM25Okapi = auto()
@@ -62,10 +66,51 @@ class BM25DistanceMetric(AutoEnum):
     BM25T = auto()
 
 
+def _make_bm25_docs_batch(
+        docs_df: pd.DataFrame,
+        *,
+        id_col: str,
+        text_col: str,
+        tokenize_text: Callable,
+        store_documents: bool
+) -> List[Tuple[BM25IndexStoreDoc, List[str]]]:
+    _bm25_docs_batch: List[Tuple[BM25IndexStoreDoc, List[str]]] = []
+    for doc_data_i, doc_data in enumerate(docs_df.to_dict(orient='records')):
+        try:
+            doc_tokens: List[str] = tokenize_text(doc_data[text_col])
+            doc_id: Union[int, float, str] = BM25IndexStoreDoc.clean_doc_id(doc_data[id_col])
+            if store_documents:
+                doc_data: Optional[Dict] = doc_data
+            else:
+                doc_data: Optional[Dict] = None
+            bm25_doc: BM25IndexStoreDoc = BM25IndexStoreDoc(
+                doc_id=doc_id,
+                doc_len=len(doc_tokens),
+                doc=doc_data
+            )
+            _bm25_docs_batch.append((bm25_doc, doc_tokens,))
+        except Exception as e:
+            raise ValueError(
+                f'Error creating document [{doc_data_i}/{len(docs_df)}]:\n'
+                f'{format_exception_msg(e)}'
+            )
+    return _bm25_docs_batch
+
+
+def _tokenize_text(text: Union[str, List[str]], tokenizer: Optional[Callable] = None) -> List[str]:
+    if isinstance(text, str) and tokenizer is not None:
+        text: List[str] = tokenizer(text)
+    if not is_list_like(text):
+        raise ValueError(f'Expected text to be tokenized string, found: {type_str(text)}')
+    return text
+
+
 BM25IndexStore = "BM25IndexStore"
 
 
 class BM25IndexStore(MutableParameters, ABC):
+    """A single index shard."""
+
     class Config(MutableParameters.Config):
         extra = Extra.ignore
 
@@ -73,6 +118,8 @@ class BM25IndexStore(MutableParameters, ABC):
 
     store_documents: bool = True
     tokenizer: Any
+    ## This will be overwritten when using Distributed BM25 to make the calculation work; to get
+    ## the actual number of documents in a BM25IndexStore shard, use property `BM25IndexStore.true_index_size`.
     index_size: conint(ge=0) = 0
     corpus_num_tokens: conint(ge=0) = 0
     docs: Dict[str, BM25IndexStoreDoc] = {}  ## doc_id -> document
@@ -87,14 +134,18 @@ class BM25IndexStore(MutableParameters, ABC):
         return self.corpus_num_tokens / self.index_size  ## Average document length
 
     @property
+    def true_index_size(self) -> int:
+        return len(self.docs)
+
+    @property
     def doc_ids(self) -> np.ndarray:
-        if self._doc_ids_np.shape[0] != len(self.docs):
+        if self._doc_ids_np.shape[0] != self.true_index_size:
             self._doc_ids_np = np.array(list(self.docs.keys()))
         return self._doc_ids_np
 
     @property
     def doc_lens(self) -> np.ndarray:
-        if self._doc_lens_np.shape[0] != len(self.docs):
+        if self._doc_lens_np.shape[0] != self.true_index_size:
             self._doc_lens_np = np.array([doc.doc_len for doc_id, doc in self.docs.items()], dtype=np.uint32)
         return self._doc_lens_np
 
@@ -102,14 +153,15 @@ class BM25IndexStore(MutableParameters, ABC):
         return str(self)
 
     def __str__(self) -> str:
-        return f'BM25 ({self.distance_metric.value}) Index Store with {len(self.docs)} entries'
+        return f'BM25 ({self.distance_metric.value}) Index Store with {self.true_index_size} entries'
 
     def concat_index(
             self,
             index2: BM25IndexStore,
             *,
             recalc_token_idfs: bool = True,
-    ) -> BM25IndexStore:
+    ):
+        """Concatenates ones BM25 index with another."""
         assert self.class_name == index2.class_name
         dict_keys_to_exclude: List[str] = [
             'index_size',
@@ -155,24 +207,62 @@ class BM25IndexStore(MutableParameters, ABC):
             *,
             id_col: str,
             text_col: str,
+            indexing_batch_size: int,
+            indexing_parallelize: Parallelize,
+            executor: Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor]],
             **kwargs,
     ):
-        documents: ScalableDataFrame = ScalableDataFrame.of(documents, layout=DataLayout.LIST_OF_DICT)
+        documents: ScalableDataFrame = ScalableDataFrame.of(documents, layout=DataLayout.PANDAS)
         num_docs: int = len(documents)
         progress_bar: Optional[Dict] = Alias.get_progress_bar(kwargs)
-        update_pbar_ever: int = 100
-        pbar: ProgressBar = ProgressBar.of(
-            progress_bar,
-            total=num_docs,
-            unit='documents',
-        )
-        for i, doc_data in enumerate(documents.to_list_of_dict()):
-            self._add_document(doc_data=doc_data, id_col=id_col, text_col=text_col)
-            if (i + 1) % update_pbar_ever == 0:
-                pbar.update(update_pbar_ever)
-        pbar.update(num_docs % update_pbar_ever)
-        pbar.success()
+
+        with Timer(f'Creating {num_docs} documents ({indexing_parallelize})', silent=True):
+            submission_pbar: ProgressBar = ProgressBar.of(
+                progress_bar,
+                total=num_docs,
+                unit=f'Creating documents ({indexing_parallelize})',
+                miniters=300,
+            )
+            bm25_docs_batches: List[Any] = []
+            for docs_df in documents.stream(batch_size=indexing_batch_size, raw=True):
+                bm25_docs_batches.append(dispatch(
+                    _make_bm25_docs_batch,
+                    docs_df=docs_df,
+                    id_col=id_col,
+                    text_col=text_col,
+                    tokenize_text=functools.partial(_tokenize_text, tokenizer=self.tokenizer),
+                    store_documents=self.store_documents,
+                    parallelize=indexing_parallelize,
+                    executor=executor,
+                ))
+                submission_pbar.update(len(docs_df))
+            submission_pbar.success()
+
+        with Timer(f'Indexing {num_docs} documents ({indexing_parallelize})', silent=True):
+            indexed_pbar: ProgressBar = ProgressBar.of(
+                progress_bar,
+                total=num_docs,
+                unit=f'Indexing documents ({indexing_parallelize})',
+                miniters=300,
+            )
+            for bm25_docs_batch in accumulate_iter(bm25_docs_batches, item_wait=10e-3):
+                self._add_bm25_docs_batch(bm25_docs_batch)
+                indexed_pbar.update(len(bm25_docs_batch))
+            indexed_pbar.success()
         self.recalculate_token_idfs()
+
+    def _add_bm25_docs_batch(
+            self,
+            bm25_docs_batch: List[Tuple[BM25IndexStoreDoc, List[str]]],
+    ):
+        for bm25_doc, doc_tokens in bm25_docs_batch:
+            doc_token_freq: Counter = Counter(doc_tokens)
+            for token, freq in doc_token_freq.items():
+                self.token_doc_freqs[token] += 1
+            self.doc_token_freqs[bm25_doc.doc_id] = doc_token_freq
+            self.index_size += 1
+            self.docs[bm25_doc.doc_id] = bm25_doc
+            self.corpus_num_tokens += bm25_doc.doc_len
 
     def _add_document(
             self,
@@ -184,7 +274,7 @@ class BM25IndexStore(MutableParameters, ABC):
         doc_id: Union[int, float, str] = doc_data[id_col]
         doc_id: str = BM25IndexStoreDoc.clean_doc_id(doc_id)
         doc_text: str = doc_data[text_col]
-        doc_tokens: List[str] = self._tokenize_text(doc_text)
+        doc_tokens: List[str] = _tokenize_text(doc_text, tokenizer=self.tokenizer)
         doc_token_freq: Counter = Counter(doc_tokens)
         doc_len: int = len(doc_tokens)
 
@@ -199,18 +289,11 @@ class BM25IndexStore(MutableParameters, ABC):
             self.token_doc_freqs[token] += 1
         self.index_size += 1
 
-    def _tokenize_text(self, text: Union[str, List[str]]) -> List[str]:
-        if isinstance(text, str) and self.tokenizer is not None:
-            text: List[str] = self.tokenizer(text)
-        if not is_list_like(text):
-            raise ValueError(f'Expected text to be tokenized string, found: {type_str(text)}')
-        return text
-
     @abstractmethod
     def calculate_token_idfs(self) -> Dict[str, float]:
         pass
 
-    def get_top_k(self, query: str, k: int) -> List[Tuple[BM25IndexStoreDoc, float]]:
+    def get_top_k(self, query: str, k: int, *, retrieve_documents: bool = True) -> List[Tuple[BM25IndexStoreDoc, float]]:
         doc_query_scores: np.ndarray = self.get_doc_scores(query)
         top_k_doc_query_score_idxs, top_k_doc_query_scores = best_k(
             doc_query_scores,
@@ -220,10 +303,13 @@ class BM25IndexStore(MutableParameters, ABC):
         )
         top_k_doc_ids: np.ndarray = self.doc_ids[top_k_doc_query_score_idxs]
         top_k_docs: List[BM25IndexStoreDoc] = [
-            self.docs[top_k_doc_id]
+            self.docs[top_k_doc_id] if retrieve_documents else self.docs[top_k_doc_id].copy_without_doc()
             for top_k_doc_id in top_k_doc_ids
         ]
         return list(zip(top_k_docs, top_k_doc_query_scores))
+
+    def get_doc_by_id(self, doc_id: str) -> Optional[BM25IndexStoreDoc]:
+        return self.docs.get(doc_id)
 
     @abstractmethod
     def get_doc_scores(self, query: str) -> np.ndarray:
@@ -268,9 +354,9 @@ class BM25Okapi(BM25IndexStore):
         :param query: a string which is used to retrieve.
         :return: np array of BM25 scores (one for each document).
         """
-        query_tokens: List[str] = self._tokenize_text(query)
+        query_tokens: List[str] = _tokenize_text(query, tokenizer=self.tokenizer)
         doc_lens: np.ndarray = self.doc_lens
-        doc_query_scores: np.ndarray = np.zeros(len(self.docs))
+        doc_query_scores: np.ndarray = np.zeros(self.true_index_size)
         for token in query_tokens:
             token_freq: np.ndarray = np.array([
                 self.doc_token_freqs[doc_id].get(token, 0)
@@ -285,6 +371,9 @@ class BM25Okapi(BM25IndexStore):
 
 class BM25IndexStoreParams(MappedParameters):
     store_documents: bool
+    indexing_batch_size: conint(ge=1) = 1_000
+    indexing_parallelize: Parallelize = Parallelize.sync
+    indexing_max_workers: Optional[conint(ge=1)] = None
 
     _mapping = append_to_keys(
         prefix='BM25',
@@ -313,6 +402,8 @@ class BM25IndexStoreParams(MappedParameters):
 def _create_index_store(
         params: BM25IndexStoreParams,
         documents: Optional[RetrievalCorpus],
+        *,
+        executor: Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor]] = None,
         **kwargs
 ) -> BM25IndexStore:
     index_store: BM25IndexStore = params.initialize()
@@ -330,7 +421,13 @@ def _create_index_store(
         else:
             should_delete: bool = True
             documents_data: ScalableDataFrame = documents.read(**kwargs).data
-        index_store.add_documents(documents=documents_data, **kwargs)
+        index_store.add_documents(
+            documents=documents_data,
+            indexing_batch_size=params.indexing_batch_size,
+            indexing_parallelize=params.indexing_parallelize,
+            executor=executor,
+            **kwargs,
+        )
         if should_delete:
             del documents_data
             import gc
@@ -355,7 +452,7 @@ class BM25RetrievalIndexBase(SparseRetrievalIndex, ABC):
             indexing_parallelize: Parallelize = Parallelize.processes,
             indexing_max_workers: int = min(mp.cpu_count() - 1, 63),
             indexing_iter_files: bool = False,
-            indexing_progress_bar: Union[Dict, bool] = False,
+            indexing_progress_bar: Union[Dict, bool] = True,
             **kwargs,
     ):
         if self.index is None:
@@ -438,7 +535,7 @@ class BM25RetrievalIndexBase(SparseRetrievalIndex, ABC):
             indexing_progress_bar,
             total=pbar_total,
             desc=pbar_desc,
-            unit='partition',
+            unit='document',
         )
         self._update_index_from_corpus_gen(
             corpus_gen=corpus_gen,
@@ -552,7 +649,7 @@ class BM25RetrievalIndex(BM25RetrievalIndexBase):
                         },
                     )
                 )
-            for index_store in accumulate_iter(index_futs, progress_bar=pbar):
+            for index_store in accumulate_iter(index_futs, item_wait=10e-3):
                 self.index.concat_index(index_store, recalc_token_idfs=False)
             self.index.recalculate_token_idfs()
         finally:
@@ -603,7 +700,15 @@ class BM25IndexStoreActor:
     ):
         self.actor_id: str = actor_id
         self.params: BM25IndexStoreParams = params
-        self.index_shard: BM25IndexStore = _create_index_store(self.params, documents=None)
+        self.executor = dispatch_executor(
+            parallelize=self.params.indexing_parallelize,
+            max_workers=self.params.indexing_max_workers,
+        )
+        self.index_shard: BM25IndexStore = _create_index_store(
+            self.params,
+            documents=None,
+            executor=self.executor,
+        )
 
     def get_actor_id(self) -> str:
         return self.actor_id
@@ -611,20 +716,23 @@ class BM25IndexStoreActor:
     def get_index_size(self) -> int:
         return self.index_shard.index_size
 
+    def get_true_index_size(self) -> int:  ## Uses num docs
+        return self.index_shard.true_index_size
+
     def set_index_size(self, index_size: int):
-        self.index_shard.index_size = index_size
+        self.index_shard.index_size = get_result(index_size)
 
     def get_corpus_num_tokens(self) -> int:
         return self.index_shard.corpus_num_tokens
 
     def set_corpus_num_tokens(self, corpus_num_tokens: int):
-        self.index_shard.corpus_num_tokens = corpus_num_tokens
+        self.index_shard.corpus_num_tokens = get_result(corpus_num_tokens)
 
     def get_token_doc_freqs(self) -> Counter:
         return self.index_shard.token_doc_freqs
 
     def set_token_doc_freqs(self, token_doc_freqs: Counter):
-        self.index_shard.token_doc_freqs = token_doc_freqs
+        self.index_shard.token_doc_freqs = get_result(token_doc_freqs)
 
     def recalculate_token_idfs(self):
         self.index_shard.recalculate_token_idfs()
@@ -636,7 +744,7 @@ class BM25IndexStoreActor:
             documents_params: Dict,
             params: RayBM25IndexStoreParams,
             **kwargs,
-    ):
+    ) -> Union[str, int]:
         try:
             documents: Dataset = Dataset.of(
                 **documents_params,
@@ -646,32 +754,53 @@ class BM25IndexStoreActor:
             index_store_update: BM25IndexStore = _create_index_store(
                 params=params,
                 documents=documents,
+                executor=self.executor,
                 **kwargs,
             )
             self.index_shard.concat_index(index_store_update, recalc_token_idfs=False)
-            return True
+            return index_store_update.index_size
         except Exception as e:
-            print(format_exception_msg(e))
-            return False
+            return format_exception_msg(e)
 
     def get_top_k_batch(
             self,
             queries_batch: ScalableSeries,
             top_k: int,
-    ) -> List[List[Tuple[BM25IndexStoreDoc, float]]]:
-        return [
-            self.index_shard.get_top_k(
+            *,
+            retrieve_documents: bool = True,
+            return_actor_id: bool = False,
+    ) -> Union[
+        List[List[Tuple[BM25IndexStoreDoc, float]]],
+        List[List[Tuple[str, BM25IndexStoreDoc, float]]],
+    ]:
+        actor_id: str = self.actor_id
+        top_k_batch: List[List[Tuple]] = []
+        for query in queries_batch:
+            query_top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = self.index_shard.get_top_k(
                 query,
                 k=top_k,
+                retrieve_documents=retrieve_documents,
             )
-            for query in queries_batch
-        ]
+            if return_actor_id:
+                query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = [
+                    (actor_id, doc, score)
+                    for doc, score in query_top_k_results
+                ]
+            top_k_batch.append(query_top_k_results)
+        return top_k_batch
+
+    def get_docs_by_ids(self, doc_ids: List[str]) -> Dict[str, Optional[BM25IndexStoreDoc]]:
+        return {
+            doc_id: self.index_shard.get_doc_by_id(doc_id)
+            for doc_id in doc_ids
+        }
 
 
 class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
     aliases = ['BM25-Ray']
     index: Optional[List[ActorComposite]] = None
     params: Optional[Union[RayBM25IndexStoreParams, Dict, str]] = None
+    _doc_id_to_doc_cache: Dict[str, Tuple[BM25IndexStoreDoc, str]] = {}
 
     @root_validator(pre=False)
     def set_bm25_params(cls, params: Dict) -> Dict:
@@ -690,14 +819,21 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
         self.index: List[ActorComposite] = ActorComposite.create_actors(
             actor_factory,
             num_actors=self.params.num_shards,
+            progress_bar=True,
         )
+
+    def _get_index_actor_composite(self, actor_id: str) -> ActorComposite:
+        return only_item([
+            actor_composite for actor_composite in self.index
+            if actor_composite.actor_id == actor_id
+        ])
 
     @property
     def index_size(self) -> int:
         return sum(accumulate([
-            actor_composite.actor.get_index_size.remote()
-            for actor_composite in self.index
-        ]))
+            index_actor_composite.actor.get_true_index_size.remote()
+            for index_actor_composite in self.index
+        ], item_wait=1e-3))
 
     def _update_index_from_corpus_gen(
             self,
@@ -712,19 +848,20 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
     ) -> NoReturn:
         num_actors: int = len(self.index)
         rnd_idx: List[int] = list(np.random.permutation(range(num_actors)))
-        index_futs: List[Any] = []
-        for documents_batch_i, documents_batch in enumerate(corpus_gen):
-            assert isinstance(documents_batch, RetrievalCorpus)
-            ## Select in randomized round-robin order:
-            index_actor_composite: ActorComposite = self.index[rnd_idx[documents_batch_i % num_actors]]
-            index_futs.append(
-                index_actor_composite.actor.update_index_shard.remote(**{
+        index_futs: Dict[int, Any] = {}
+        with Timer(f'Index documents from corpus into distributed shards'):
+            for corpus_shard_i, corpus_shard in enumerate(corpus_gen):
+                assert isinstance(corpus_shard, RetrievalCorpus)
+                ## Select in randomized round-robin order:
+                # print(f'Processing document batch#{corpus_shard_i}.', flush=True)
+                index_actor_composite: ActorComposite = self.index[rnd_idx[corpus_shard_i % num_actors]]
+                index_futs[corpus_shard_i] = index_actor_composite.actor.update_index_shard.remote(**{
                     **kwargs,
                     **dict(
-                        documents_data=documents_batch.data,
+                        documents_data=corpus_shard.data,
                         documents_params={
-                            **documents_batch.dict(exclude={'data'}),
-                            **dict(data_idx=documents_batch_i),
+                            **corpus_shard.dict(exclude={'data'}),
+                            **dict(data_idx=corpus_shard_i),
                         },
                         params=self.params,
                         id_col=id_col,
@@ -732,47 +869,67 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
                         parallelize=indexing_parallelize,
                     ),
                 })
-            )
-        assert bool(all(accumulate(index_futs, progress_bar=pbar)))
-        ## Next steps:
-        ## (1) docs and doc_token_freqs remain sharded.
-        ## (2) index_size, corpus_num_tokens and token_doc_freqs must be merged & synced between actors
-        ## (3) token_idfs must be recalculated by each actor after this sync.
-        all_index_size: List[int] = []
-        all_corpus_num_tokens: List[int] = []
-        all_token_doc_freqs: List[Counter] = []
-        for index_actor_composite in self.index:
-            index_actor: ray.actor.ActorHandle = index_actor_composite.actor
-            all_index_size.append(index_actor.get_index_size.remote())
-            all_corpus_num_tokens.append(index_actor.get_corpus_num_tokens.remote())
-            all_token_doc_freqs.append(index_actor.get_token_doc_freqs.remote())
-        combined_index_size: int = 0
-        combined_corpus_num_tokens: int = 0
-        combined_token_doc_freqs: Counter = Counter()
-        for shard_index_size, shard_corpus_num_tokens, shard_token_doc_freqs in zip(
-                accumulate(all_index_size),
-                accumulate(all_corpus_num_tokens),
-                accumulate(all_token_doc_freqs),
-        ):
-            combined_index_size += shard_index_size
-            combined_corpus_num_tokens += shard_corpus_num_tokens
-            combined_token_doc_freqs += shard_token_doc_freqs
-        set_index_size_futs: List = []
-        set_corpus_num_tokens_futs: List = []
-        set_token_doc_freqs_futs: List = []
-        for index_actor_composite in self.index:
-            index_actor: ray.actor.ActorHandle = index_actor_composite.actor
-            set_index_size_futs.append(index_actor.set_index_size.remote(combined_index_size))
-            set_corpus_num_tokens_futs.append(index_actor.set_corpus_num_tokens.remote(combined_corpus_num_tokens))
-            set_token_doc_freqs_futs.append(index_actor.set_token_doc_freqs.remote(combined_token_doc_freqs))
-        wait(set_index_size_futs)
-        wait(set_corpus_num_tokens_futs)
-        wait(set_token_doc_freqs_futs)
-        recalculate_token_idfs_futs: List = []
-        for index_actor_composite in self.index:
-            index_actor: ray.actor.ActorHandle = index_actor_composite.actor
-            recalculate_token_idfs_futs.append(index_actor.recalculate_token_idfs.remote())
-        wait(recalculate_token_idfs_futs)
+            for corpus_shard_i, fut_result in accumulate_iter(index_futs, item_wait=1e-3, iter_wait=10e-3):
+                if isinstance(fut_result, str):
+                    pbar.failed()
+                    raise SystemError(f'Error indexing corpus shard {corpus_shard_i}:\n{fut_result}')
+                assert isinstance(fut_result, int)
+                assert fut_result > 0
+                pbar.update(fut_result)
+            pbar.success()
+        with Timer(f'Actor index sizes'):
+            for index_actor_composite in self.index:
+                index_actor: ray.actor.ActorHandle = index_actor_composite.actor
+                print(
+                    f'Actor id: {index_actor_composite.actor_id}, '
+                    f'index size: {get_result(index_actor.get_true_index_size.remote())}'
+                )
+        with Timer(f'Synchronizing index metadata across distributed shards'):
+            ## Next steps:
+            ## (1) docs and doc_token_freqs remain sharded.
+            ## (2) index_size, corpus_num_tokens and token_doc_freqs must be merged & synced between actors
+            ## (3) token_idfs must be recalculated by each actor after this sync.
+            with Timer(f'>> Fetching metadata from distributed shards'):
+                all_index_size: List[int] = []
+                all_corpus_num_tokens: List[int] = []
+                all_token_doc_freqs: List[Counter] = []
+                for index_actor_composite in self.index:
+                    index_actor: ray.actor.ActorHandle = index_actor_composite.actor
+                    all_index_size.append(index_actor.get_true_index_size.remote())
+                    all_corpus_num_tokens.append(index_actor.get_corpus_num_tokens.remote())
+                    all_token_doc_freqs.append(index_actor.get_token_doc_freqs.remote())
+                combined_index_size: int = 0
+                combined_corpus_num_tokens: int = 0
+                combined_token_doc_freqs: Counter = Counter()
+                for shard_index_size, shard_corpus_num_tokens, shard_token_doc_freqs in zip(
+                        accumulate(all_index_size, item_wait=1e-3),
+                        accumulate(all_corpus_num_tokens, item_wait=1e-3),
+                        accumulate(all_token_doc_freqs, item_wait=1e-3),
+                ):
+                    combined_index_size += shard_index_size
+                    combined_corpus_num_tokens += shard_corpus_num_tokens
+                    combined_token_doc_freqs += shard_token_doc_freqs
+            combined_index_size_obj = ray.put(combined_index_size)
+            combined_corpus_num_tokens_obj = ray.put(combined_corpus_num_tokens)
+            combined_token_doc_freqs_obj = ray.put(combined_token_doc_freqs)
+            with Timer(f'>> Broadcasting metadata to distributed shards'):
+                set_index_size_futs: List = []
+                set_corpus_num_tokens_futs: List = []
+                set_token_doc_freqs_futs: List = []
+                for index_actor_composite in self.index:
+                    index_actor: ray.actor.ActorHandle = index_actor_composite.actor
+                    set_index_size_futs.append(index_actor.set_index_size.remote(combined_index_size_obj))
+                    set_corpus_num_tokens_futs.append(index_actor.set_corpus_num_tokens.remote(combined_corpus_num_tokens_obj))
+                    set_token_doc_freqs_futs.append(index_actor.set_token_doc_freqs.remote(combined_token_doc_freqs_obj))
+                wait(set_index_size_futs)
+                wait(set_corpus_num_tokens_futs)
+                wait(set_token_doc_freqs_futs)
+            with Timer(f'>> Recalculating token_idfs on each shard'):
+                recalculate_token_idfs_futs: List = []
+                for index_actor_composite in self.index:
+                    index_actor: ray.actor.ActorHandle = index_actor_composite.actor
+                    recalculate_token_idfs_futs.append(index_actor.recalculate_token_idfs.remote())
+                wait(recalculate_token_idfs_futs)
 
     def _retrieve_batch(
             self,
@@ -780,58 +937,105 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
             top_k: int,
             retrieve_documents: bool,
     ) -> List[List[RankedResult]]:
-        actors_top_k_results: Dict[str, List[List[Tuple[BM25IndexStoreDoc, float]]]] = {}
-        for index_actor_composite in self.index:
-            index_actor: ray.actor.ActorHandle = index_actor_composite.actor
-            actors_top_k_results[index_actor_composite.actor_id] = index_actor.get_top_k_batch.remote(
-                queries_batch,
-                top_k=top_k,
-            )
-        actors_top_k_results: Dict[str, List[List[Tuple[BM25IndexStoreDoc, float]]]] = accumulate(actors_top_k_results)
-        batch_ranked_results: List[List[RankedResult]] = []
-        for all_actor_query_top_k_results in zip(*list(actors_top_k_results.values())):
-            batch_ranked_results.append(
-                self._merge_retrieved_results(
-                    all_actor_query_top_k_results=all_actor_query_top_k_results,
-                    top_k=top_k,
-                    retrieve_documents=retrieve_documents,
-                    how='max',
+        with Timer(f'Retrieving {top_k} results for batch of {len(queries_batch)} queries from {len(self.index)} index shards'):
+            with Timer(f'>> Retrieving {top_k} results for {len(queries_batch)} queries from each index shard'):
+                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]] = {}
+                for index_actor_composite in self.index:
+                    index_actor: ray.actor.ActorHandle = index_actor_composite.actor
+                    actors_top_k_results[index_actor_composite.actor_id] = index_actor.get_top_k_batch.remote(
+                        queries_batch,
+                        top_k=top_k,
+                        retrieve_documents=False,
+                        return_actor_id=True,
+                    )
+                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]] = accumulate(
+                    actors_top_k_results,
+                    progress_bar=True,
+                    item_wait=1e-3,
+                    iter_wait=100e-3,
                 )
-            )
-        assert len(batch_ranked_results) == len(queries_batch)
+            with Timer(f'>> Retrieving missing documents to populate cache'):
+                self._populate_docs_cache(actors_top_k_results)
+
+            with Timer(f'>> Merging {top_k} results for {len(queries_batch)} queries across {len(self.index)} index shards'):
+                batch_ranked_results: List[List[RankedResult]] = []
+                for all_actor_query_top_k_results in zip(*list(actors_top_k_results.values())):
+                    batch_ranked_results.append(
+                        self._merge_retrieved_results(
+                            all_actor_query_top_k_results=all_actor_query_top_k_results,
+                            top_k=top_k,
+                            retrieve_documents=retrieve_documents,
+                            how='max',
+                        )
+                    )
+                assert len(batch_ranked_results) == len(queries_batch)
         return batch_ranked_results
+
+    def _populate_docs_cache(
+            self,
+            actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]],
+    ):
+        actor_to_missing_doc_ids: Dict[str, List[str]] = {}
+        for _, actor_all_query_top_k_results in actors_top_k_results.items():
+            for query_top_k_results in actor_all_query_top_k_results:
+                for document_actor_id, bm_doc, score in query_top_k_results:  ## For each query
+                    check_isinstance(bm_doc, BM25IndexStoreDoc)
+                    if bm_doc.doc_id not in self._doc_id_to_doc_cache:
+                        actor_to_missing_doc_ids.setdefault(document_actor_id, [])
+                        actor_to_missing_doc_ids[document_actor_id].append(bm_doc.doc_id)
+
+        if len(actor_to_missing_doc_ids) > 0:
+            actor_to_docs: Dict[str, Dict[str, Optional[BM25IndexStoreDoc]]] = {}
+            for actor_id, actor_doc_ids in actor_to_missing_doc_ids.items():
+                index_actor_composite: ActorComposite = self._get_index_actor_composite(actor_id)
+                actor_to_docs[actor_id] = index_actor_composite.actor.get_docs_by_ids.remote(
+                    doc_ids=actor_doc_ids
+                )
+            for actor_id, actor_doc_id_to_doc in accumulate_iter(actor_to_docs, item_wait=1e-3, iter_wait=1000e-3):
+                for doc_id, bm_doc in actor_doc_id_to_doc.items():
+                    if bm_doc is None:
+                        raise SystemError(
+                            f'Could not find doc with id "{doc_id}" on actor "{actor_id}", '
+                            f'even though it was retrieved earlier.'
+                        )
+                    check_isinstance(bm_doc, BM25IndexStoreDoc)
+                    self._doc_id_to_doc_cache[doc_id] = (bm_doc, actor_id)
 
     def _merge_retrieved_results(
             self,
-            all_actor_query_top_k_results: Tuple[List[Tuple[BM25IndexStoreDoc, float]], ...],
+            all_actor_query_top_k_results: Tuple[List[Tuple[str, BM25IndexStoreDoc, float]], ...],
             top_k: int,
             retrieve_documents: bool,
             how: Literal['max', 'min'],
     ) -> List[RankedResult]:
         ## For a particular query, sort the top-k results across actors.
         assert how in {'max', 'min'}
-        query_top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = []
+        query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = []
         for actor_query_top_k_results in all_actor_query_top_k_results:
             query_top_k_results.extend(actor_query_top_k_results)
-        query_top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = sorted(
-            query_top_k_results, key=lambda x: x[1], reverse=(True if how == 'max' else False)
-        )
-        query_ranked_results: List[RankedResult] = []
-        for k, (top_k_doc, top_k_score) in enumerate(query_top_k_results):
-            k: int = k + 1
-            doc: Optional[Dict] = None
-            if retrieve_documents:
-                doc: Any = top_k_doc.doc
-            query_ranked_results.append(
-                RankedResult.of(dict(
-                    rank=k,
-                    document_id=top_k_doc.doc_id,
-                    document=doc,
-                    distance=float(top_k_score),
-                    distance_metric=self.params.distance_metric,
-                ))
+
+        with Timer(f'>>>> Merging retrieved results into top-k RankedResults', silent=True):
+            query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = sorted(
+                query_top_k_results, key=lambda x: x[2], reverse=(True if how == 'max' else False)
             )
-        return query_ranked_results[:top_k]
+            query_ranked_results: List[RankedResult] = []
+            for k, (doc_actor_id, top_k_doc, top_k_score) in enumerate(query_top_k_results):
+                k: int = k + 1
+                doc: Optional[Dict] = None
+                if retrieve_documents and self.params.store_documents:
+                    doc: Dict = self._doc_id_to_doc_cache[top_k_doc.doc_id][0].doc  ## Use the raw document
+                query_ranked_results.append(
+                    RankedResult.of(dict(
+                        rank=k,
+                        document_id=top_k_doc.doc_id,
+                        document=doc,
+                        distance=float(top_k_score),
+                        distance_metric=self.params.distance_metric,
+                        document_actor_id=doc_actor_id,
+                    ))
+                )
+            query_ranked_results: List[RankedResult] = query_ranked_results[:top_k]
+        return query_ranked_results
 
 
 class SparseRetriever(Retriever):
@@ -1043,185 +1247,3 @@ class RandomRetriever(Retriever):
             predictions=predictions,
             **kwargs
         )
-
-#
-#
-# class BM25Okapi(BM25):
-#     k1: float = 1.5
-#     b: float = 0.75
-#     epsilon: float = 0.25
-#
-#     def _calc_idf(self, nd):
-#         """
-#         Calculates frequencies of terms in documents and in corpus.
-#         This algorithm sets a floor on the idf values to eps * average_idf
-#         """
-#         # collect idf sum to calculate an average idf for epsilon value
-#         idf_sum = 0
-#         # collect words with negative idf to set them a special epsilon value.
-#         # idf can be negative if word is contained in more than half of documents
-#         negative_idfs = []
-#         for word, freq in nd.items():
-#             idf = math.log(self.index_size - freq + 0.5) - math.log(freq + 0.5)
-#             self.idf[word] = idf
-#             idf_sum += idf
-#             if idf < 0:
-#                 negative_idfs.append(word)
-#         self.average_idf = idf_sum / len(self.idf)
-#
-#         eps = self.epsilon * self.average_idf
-#         for word in negative_idfs:
-#             self.idf[word] = eps
-#
-#     def get_scores(self, query):
-#         """
-#         The ATIRE BM25 variant uses an idf function which uses a log(idf) score. To prevent negative idf scores,
-#         this algorithm also adds a floor to the idf value of epsilon.
-#         See [Trotman, A., X. Jia, M. Crane, Towards an Efficient and Effective Search Engine] for more info
-#         :param query:
-#         :return:
-#         """
-#         score = np.zeros(self.index_size)
-#         doc_len = np.array(self.doc_len)
-#         for q in query:
-#             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
-#             score += (self.idf.get(q) or 0) * (q_freq * (self.k1 + 1) /
-#                                                (q_freq + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)))
-#         return score
-#
-#     def get_batch_scores(self, query, doc_ids):
-#         """
-#         Calculate bm25 scores between query and subset of all docs
-#         """
-#         assert all(di < len(self.doc_freqs) for di in doc_ids)
-#         score = np.zeros(len(doc_ids))
-#         doc_len = np.array(self.doc_len)[doc_ids]
-#         for q in query:
-#             q_freq = np.array([(self.doc_freqs[di].get(q) or 0) for di in doc_ids])
-#             score += (self.idf.get(q) or 0) * (q_freq * (self.k1 + 1) /
-#                                                (q_freq + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)))
-#         return score.tolist()
-#
-#
-# class BM25L(BM25):
-#     def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, delta=0.5):
-#         # Algorithm specific parameters
-#         self.k1 = k1
-#         self.b = b
-#         self.delta = delta
-#         super().__init__(corpus, tokenizer)
-#
-#     def _calc_idf(self, nd):
-#         for word, freq in nd.items():
-#             idf = math.log(self.index_size + 1) - math.log(freq + 0.5)
-#             self.idf[word] = idf
-#
-#     def get_scores(self, query):
-#         score = np.zeros(self.index_size)
-#         doc_len = np.array(self.doc_len)
-#         for q in query:
-#             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
-#             ctd = q_freq / (1 - self.b + self.b * doc_len / self.avgdl)
-#             score += (self.idf.get(q) or 0) * q_freq * (self.k1 + 1) * (ctd + self.delta) / \
-#                      (self.k1 + ctd + self.delta)
-#         return score
-#
-#     def get_batch_scores(self, query, doc_ids):
-#         """
-#         Calculate bm25 scores between query and subset of all docs
-#         """
-#         assert all(di < len(self.doc_freqs) for di in doc_ids)
-#         score = np.zeros(len(doc_ids))
-#         doc_len = np.array(self.doc_len)[doc_ids]
-#         for q in query:
-#             q_freq = np.array([(self.doc_freqs[di].get(q) or 0) for di in doc_ids])
-#             ctd = q_freq / (1 - self.b + self.b * doc_len / self.avgdl)
-#             score += (self.idf.get(q) or 0) * q_freq * (self.k1 + 1) * (ctd + self.delta) / \
-#                      (self.k1 + ctd + self.delta)
-#         return score.tolist()
-#
-#
-# class BM25Plus(BM25):
-#     def __init__(self, corpus, tokenizer=None, k1=1.5, b=0.75, delta=1):
-#         # Algorithm specific parameters
-#         self.k1 = k1
-#         self.b = b
-#         self.delta = delta
-#         super().__init__(corpus, tokenizer)
-#
-#     def _calc_idf(self, nd):
-#         for word, freq in nd.items():
-#             idf = math.log((self.index_size + 1) / freq)
-#             self.idf[word] = idf
-#
-#     def get_scores(self, query):
-#         score = np.zeros(self.index_size)
-#         doc_len = np.array(self.doc_len)
-#         for q in query:
-#             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
-#             score += (self.idf.get(q) or 0) * (self.delta + (q_freq * (self.k1 + 1)) /
-#                                                (self.k1 * (1 - self.b + self.b * doc_len / self.avgdl) + q_freq))
-#         return score
-#
-#     def get_batch_scores(self, query, doc_ids):
-#         """
-#         Calculate bm25 scores between query and subset of all docs
-#         """
-#         assert all(di < len(self.doc_freqs) for di in doc_ids)
-#         score = np.zeros(len(doc_ids))
-#         doc_len = np.array(self.doc_len)[doc_ids]
-#         for q in query:
-#             q_freq = np.array([(self.doc_freqs[di].get(q) or 0) for di in doc_ids])
-#             score += (self.idf.get(q) or 0) * (self.delta + (q_freq * (self.k1 + 1)) /
-#                                                (self.k1 * (1 - self.b + self.b * doc_len / self.avgdl) + q_freq))
-#         return score.tolist()
-#
-#
-# # BM25Adpt and BM25T are a bit more complicated than the previous algorithms here. Here a term-specific k1
-# # parameter is calculated before scoring is done
-#
-# # class BM25Adpt(BM25):
-# #     def __init__(self, corpus, k1=1.5, b=0.75, delta=1):
-# #         # Algorithm specific parameters
-# #         self.k1 = k1
-# #         self.b = b
-# #         self.delta = delta
-# #         super().__init__(corpus)
-# #
-# #     def _calc_idf(self, nd):
-# #         for word, freq in nd.items():
-# #             idf = math.log((self.index_size + 1) / freq)
-# #             self.idf[word] = idf
-# #
-# #     def get_scores(self, query):
-# #         score = np.zeros(self.index_size)
-# #         doc_len = np.array(self.doc_len)
-# #         for q in query:
-# #             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
-# #             score += (self.idf.get(q) or 0) * (self.delta + (q_freq * (self.k1 + 1)) /
-# #                                                (self.k1 * (1 - self.b + self.b * doc_len / self.avgdl) + q_freq))
-# #         return score
-# #
-# #
-# # class BM25T(BM25):
-# #     def __init__(self, corpus, k1=1.5, b=0.75, delta=1):
-# #         # Algorithm specific parameters
-# #         self.k1 = k1
-# #         self.b = b
-# #         self.delta = delta
-# #         super().__init__(corpus)
-# #
-# #     def _calc_idf(self, nd):
-# #         for word, freq in nd.items():
-# #             idf = math.log((self.index_size + 1) / freq)
-# #             self.idf[word] = idf
-# #
-# #     def get_scores(self, query):
-# #         score = np.zeros(self.index_size)
-# #         doc_len = np.array(self.doc_len)
-# #         for q in query:
-# #             q_freq = np.array([(doc.get(q) or 0) for doc in self.doc_freqs])
-# #             score += (self.idf.get(q) or 0) * (self.delta + (q_freq * (self.k1 + 1)) /
-# #                                                (self.k1 * (1 - self.b + self.b * doc_len / self.avgdl) + q_freq))
-# #         return score
-#

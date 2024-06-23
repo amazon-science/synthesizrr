@@ -7,7 +7,7 @@ from ray import tune, air
 from ray.runtime_env import RuntimeEnv as RayRuntimeEnv
 from synthesizrr.base.util import Parameters, set_param_from_alias, safe_validate_arguments, format_exception_msg, StringUtil, \
     Timer, get_default, is_list_like, is_empty_list_like, run_concurrent, \
-    Timeout24Hr, Timeout1Hr, as_list, accumulate, get_result, wait, AutoEnum, auto, ProgressBar, only_item, \
+    Timeout24Hr, Timeout1Hr, Timeout, as_list, accumulate, get_result, wait, AutoEnum, auto, ProgressBar, only_item, \
     ignore_all_output, ignore_logging, ignore_warnings, ignore_stdout
 from synthesizrr.base.util.aws import S3Util
 from synthesizrr.base.data import FileMetadata, ScalableDataFrame
@@ -60,6 +60,8 @@ ALGORITHM_EVALUATOR_VERBOSITY_IGNORE: Dict[int, List[Callable]] = {
     1: [ignore_stdout, ignore_warnings, partial(ignore_logging, disable_upto=logging.WARNING)],
     2: [partial(ignore_logging, disable_upto=logging.DEBUG)],
     3: [partial(ignore_logging, disable_upto=logging.NOTSET)],
+    4: [partial(ignore_logging, disable_upto=logging.NOTSET)],
+    5: [partial(ignore_logging, disable_upto=logging.NOTSET)],
 }
 
 
@@ -276,7 +278,7 @@ class RayEvaluator(Evaluator):
     ] = {'cpu': 1, 'gpu': 0}
     progress_update_frequency: int = 5
     ## By default, do not cache the model:
-    cache_timeout: Optional[Union[Timeout24Hr, confloat(gt=0, le=60 * 60 * 24)]] = None
+    cache_timeout: Optional[Union[Timeout, confloat(gt=0)]] = None
 
     @root_validator(pre=True)
     def ray_evaluator_params(cls, params: Dict) -> Dict:
@@ -478,7 +480,7 @@ class RayEvaluator(Evaluator):
             return_predictions: bool,
             predictions_destination: Optional[FileMetadata],
             progress_bar: Optional[Dict],
-            failure_action: FailureAction = FailureAction.ERROR,
+            failure_action: FailureAction = FailureAction.ERROR_DELAYED,
             sharding_strategy: ShardingStrategy = ShardingStrategy.COARSE,
             data_loading_strategy: DataLoadingStrategy = DataLoadingStrategy.LOCAL,
             load_balancing_strategy: LoadBalancingStrategy = LoadBalancingStrategy.LEAST_USED,
@@ -486,6 +488,7 @@ class RayEvaluator(Evaluator):
             submission_batch_size: Optional[conint(ge=1)] = None,
             submission_max_queued: conint(ge=0) = 2,
             submission_batch_wait: confloat(ge=0) = 15,
+            evaluation_timeout: confloat(ge=0, allow_inf_nan=True) = math.inf,
             allow_partial_predictions: bool = False,
             **kwargs
     ) -> Tuple[Optional[Predictions], Optional[List[Metric]]]:
@@ -573,7 +576,10 @@ class RayEvaluator(Evaluator):
                 kwargs.setdefault('device', 'cuda')
             row_counter: ray.actor.ActorHandle = RowCounter.options(
                 num_cpus=0.1,
-                max_concurrency=1000,
+                max_concurrency=max(
+                    num_actors_created + 2,
+                    submission_max_queued * num_actors_created + 2,
+                ),
             ).remote()
             dataset_params: Dict = dataset.dict(exclude={'data'})
             if data_loading_strategy is DataLoadingStrategy.DASK:
@@ -718,7 +724,8 @@ class RayEvaluator(Evaluator):
                 raise NotImplementedError(f'Unsupported `data_loading_strategy`: {data_loading_strategy}')
 
             ## Track till all rows are completed:
-            while rows_completed < input_len:
+            rows_completed_start_time: float = time.time()
+            while rows_completed < input_len and time.time() < rows_completed_start_time + evaluation_timeout:
                 time.sleep(self.progress_update_frequency)
                 new_rows_completed: int = ray.get(row_counter.get_rows_completed.remote())
                 rows_completed_progress_bar.update(new_rows_completed - rows_completed)
@@ -807,7 +814,7 @@ class RayEvaluator(Evaluator):
         return actor_usages
 
     def _run_evaluation_progress_bar(self, progress_bar: Optional[Dict], **kwargs) -> Optional[Dict]:
-        if self.verbosity >= 1:
+        if self.verbosity >= 2:
             return progress_bar
         return None
 

@@ -370,7 +370,7 @@ class DenseRetriever(Retriever):
                         submission_batch_size=embedder_batch_size,
                         progress_bar=None,
                         return_predictions=True,
-                        failure_action=FailureAction.ERROR,
+                        failure_action=FailureAction.ERROR_DELAYED,
                     ),
                     **kwargs,
                 }

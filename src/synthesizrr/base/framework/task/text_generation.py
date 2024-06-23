@@ -5,7 +5,7 @@ from pandas.core.groupby import DataFrameGroupBy as PandasDataFrameGroupBy
 from math import inf, exp, log
 from copy import deepcopy
 from synthesizrr.base.util import is_list_like, set_param_from_alias, MappedParameters, Parameters, get_default, as_list, \
-    is_dict_like, as_set, is_even, type_str, ignore_warnings, str_format_args, StringUtil
+    is_dict_like, as_set, is_even, type_str, ignore_warnings, str_format_args, StringUtil, format_exception_msg
 from synthesizrr.base.constants import Task, MLType, MLTypeSchema, DataLayout, DataSplit, Alias, FailureAction
 from synthesizrr.base.data import ScalableDataFrame, ScalableSeries, ScalableSeriesRawType, ScalableDataFrameRawType, FileMetadata
 from synthesizrr.base.framework import Algorithm, Dataset, Predictions
@@ -62,6 +62,7 @@ class ICLSampler(Parameters):
     icl_dataset: Dataset
     prompt_template: str
     icl_template: str
+    icl_filter_col: Optional[constr(min_length=1)]
     num_shots: conint(ge=0) = 0
     shots_sep: constr(min_length=0) = '\n\n'
 
@@ -96,21 +97,26 @@ class ICLSampler(Parameters):
     def icl_expanded_prompt_template(self) -> str:
         """The prompt template, prepended with the ICL template N times (N=num_shots)."""
         if self.num_shots == 0:
-            icl_template: str = ''
+            num_shots_icl_template: str = ''
         else:
-            icl_template: str = self.shots_sep.removesuffix('\n')
+            num_shots_icl_template: str = self.shots_sep.removesuffix('\n')
         for shot_idx in self.shot_idxs(self.num_shots):
             ## E.g. icl[item_name] becomes icl_1[item_name]
-            icl_template += self.icl_template.replace(
+            num_shots_icl_template += self.icl_template.replace(
                 f'{ICL_EXAMPLE_TEMPLATE_KEY}[',
                 f'{ICL_EXAMPLE_TEMPLATE_KEY}_{shot_idx}['
             )
             if shot_idx != self.num_shots:
-                icl_template += self.shots_sep
+                num_shots_icl_template += self.shots_sep
             else:
-                icl_template += self.shots_sep.removesuffix('\n')
-        prompt_template: str = to_second_level_prompt_template(self.prompt_template, exclude=ICL_EXAMPLES_TEMPLATE_KEY)
-        prompt_template: str = prompt_template.format(**{ICL_EXAMPLES_TEMPLATE_KEY: icl_template})
+                num_shots_icl_template += self.shots_sep.removesuffix('\n')
+        # print(f'num_shots_icl_template: """\n{num_shots_icl_template}"""\n')
+        prompt_template: str = self.prompt_template
+        # print(f'Original prompt template: """\n{prompt_template}"""\n')
+        prompt_template: str = to_second_level_prompt_template(prompt_template, exclude=ICL_EXAMPLES_TEMPLATE_KEY)
+        # print(f'Second-level prompt template: """\n{prompt_template}"""\n')
+        prompt_template: str = prompt_template.format(**{ICL_EXAMPLES_TEMPLATE_KEY: num_shots_icl_template})
+        # print(f'ICL-Expanded prompt template: """\n{prompt_template}"""\n')
         return prompt_template
 
     def append_icl_examples(self, batch: Dataset) -> Dataset:
@@ -129,14 +135,20 @@ class ICLSampler(Parameters):
 
         ## We want to avoid accidentally "leaking" the answer by selecting an ICL example with the same idx as the
         ## current example in the batch.
-        batch_icl_idxs_in_use: List[Set] = [as_set(batch_idx) for batch_idx in batch.index()]
+        batch_icl_idxs_in_use: List[Set[str]] = [as_set(batch_idx) for batch_idx in batch.index()]
         assert len(batch_icl_idxs_in_use) == len(batch)
         # print(f'Columns before: {batch.data.columns}')
+        batch_filter_col_vals: Optional[List] = None
+        if self.icl_filter_col is not None:
+            batch_filter_col_vals: List = [val for val in batch.data[self.icl_filter_col]]
         for shot_i in self.shot_idxs(self.num_shots):  ## 1, 2, 3, ...
             # print(f'shot_i: {shot_i}')
+            ## E.g. batch.data['icl_1'] = [{...}, ..., {...}]
             batch.data[self._icl_example_col_name(shot_i)]: List[Dict] = self._select_shot_i_icl_examples(
                 icl_dataset=self.icl_dataset,
                 batch_icl_idxs_in_use=batch_icl_idxs_in_use,
+                icl_filter_col=self.icl_filter_col,
+                batch_filter_col_vals=batch_filter_col_vals,
             )
             batch.data_schema.features_schema[self._icl_example_col_name(shot_i)] = MLType.OBJECT
         # print(f'Columns after: {batch.data.columns}')
@@ -148,6 +160,8 @@ class ICLSampler(Parameters):
             icl_dataset: Dataset,
             batch_icl_idxs_in_use: List[Set],  ## ICL Idxs already used, for each row in the batch.
             balance_on: Optional[str] = None,
+            icl_filter_col: Optional[str] = None,
+            batch_filter_col_vals: Optional[List] = None,
     ) -> List[Dict]:
         icl_df: pd.DataFrame = icl_dataset.data.pandas()
         shot_i_icl_examples: List[Dict] = []
@@ -156,17 +170,29 @@ class ICLSampler(Parameters):
             icl_df_filtered: pd.DataFrame = icl_df[
                 ~icl_df[icl_dataset.data_schema.index_col].isin(batch_icl_idxs_in_use[batch_i])
             ]
-            if balance_on is not None:
-                ## Select a random row for each unique value of the column, then selects one of those random rows.
-                icl_example: Dict = icl_df_filtered \
-                    .sample(frac=1).drop_duplicates(subset=[balance_on]) \
-                    .sample(frac=1).iloc[0].to_dict()
-            else:
-                ## Select random row from filtered ICL dataset, convert it to dict:
-                icl_example: Dict = icl_df_filtered.sample(frac=1).iloc[0].to_dict()
-            shot_i_icl_examples.append(icl_example)
-            ## Add the selected ICL example's index to the "in-use" set for the current example in the batch:
-            batch_icl_idxs_in_use[batch_i].add(icl_example[icl_dataset.data_schema.index_col])
+            if icl_filter_col is not None:
+                assert batch_filter_col_vals is not None
+                batch_filter_col_val: Any = batch_filter_col_vals[batch_i]
+                icl_df_filtered: pd.DataFrame = icl_df_filtered[icl_df_filtered[icl_filter_col] == batch_filter_col_val]
+
+            try:
+                if balance_on is not None:
+                    ## Select a random row for each unique value of the column, then selects one of those random rows.
+                    icl_example: Dict = icl_df_filtered \
+                        .sample(frac=1).drop_duplicates(subset=[balance_on]) \
+                        .sample(frac=1).iloc[0].to_dict()
+                else:
+                    ## Select random row from filtered ICL dataset, convert it to dict:
+                    icl_example: Dict = icl_df_filtered.sample(frac=1).iloc[0].to_dict()
+                shot_i_icl_examples.append(icl_example)
+                ## Add the selected ICL example's index to the "in-use" set for the current example in the batch:
+                batch_icl_idxs_in_use[batch_i].add(icl_example[icl_dataset.data_schema.index_col])
+            except Exception as e:
+                raise ValueError(
+                    f'Error while selecting from filtered ICL set '
+                    f'of {len(icl_df_filtered)} rows and columns: {icl_df_filtered.columns}:\n'
+                    f'{format_exception_msg(e)}'
+                )
         return shot_i_icl_examples
 
 
@@ -313,10 +339,16 @@ class ClassificationICLSampler(ICLSampler):
 
 
 def _create_prompt(prompt_template: str, prompt_prefix: str, **data) -> str:
-    prompt: str = prompt_template.format(**data)
-    if not prompt.startswith(prompt_prefix):
-        prompt: str = prompt_prefix + prompt
-    return prompt
+    try:
+        prompt: str = prompt_template.format(**data)
+        if not prompt.startswith(prompt_prefix):
+            prompt: str = prompt_prefix + prompt
+        return prompt
+    except Exception as e:
+        raise ValueError(
+            f'Could not populate prompt with data:\n{data}\nprompt_template:"""\n{prompt_template}\n"""'
+            f'\nError obtained:\n{format_exception_msg(e)}'
+        )
 
 
 def apply_prompt_template(batch: 'Prompts', prompt_prefix: str) -> 'Prompts':
@@ -559,12 +591,19 @@ class NucleusSamplingParams(TextGenerationParams):
     temperature: confloat(gt=0.0, le=1.0)
 
 
+class LogitsProcessorListParams(TextGenerationParams):
+    strategy = 'LogitsProcessorList'
+    do_sample: Literal[True] = True  ## When not doing greedy decoding, we should sample.
+    logits_processor: List[Any]
+
+
 class TextGenerationParamsMapper(MappedParameters):
     _mapping = {
         ('GreedyDecoding', 'greedy'): GreedyDecodingParams,
         ('BeamSearch', 'beam'): BeamSearchParams,
         ('TopKSampling', 'top_k'): TopKSamplingParams,
         ('NucleusSampling', 'top_p', 'nucleus'): NucleusSamplingParams,
+        ('LogitsProcessorList', 'logits_processor'): LogitsProcessorListParams,
     }
 
 
@@ -643,7 +682,9 @@ class LanguageModelTaskMixin(Algorithm, ABC):
         prompt_template: constr(min_length=1)
         icl_template: Optional[constr(min_length=1)] = None
 
-        ## Extra params will be passed on to ICLSampler
+        ## Extra params will be passed on to ICLSampler.
+        ## Filters by this column in ICL dataset to this column in the batch of data.
+        icl_filter_col: Optional[constr(min_length=1)] = None
 
         @root_validator(pre=True)
         def set_lm_task_params(cls, params: Dict) -> Dict:
@@ -722,7 +763,7 @@ class LanguageModelTaskMixin(Algorithm, ABC):
                         submission_batch_size=lm_batch_size,
                         progress_bar=None,
                         return_predictions=True,
-                        failure_action=FailureAction.ERROR,
+                        failure_action=FailureAction.ERROR_DELAYED,
                     ),
                     **kwargs,
                 },
@@ -913,7 +954,7 @@ class FewShotRetrievalAugmentedTextGenerator(LanguageModelTaskMixin):
                         submission_batch_size=retriever_batch_size,
                         progress_bar=None,
                         return_predictions=True,
-                        failure_action=FailureAction.ERROR,
+                        failure_action=FailureAction.ERROR_DELAYED,
                     ),
                     **kwargs,
                 }

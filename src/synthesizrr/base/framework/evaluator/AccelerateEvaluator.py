@@ -1,16 +1,21 @@
 from typing import *
+import time, warnings, traceback, os, io, math, numpy as np
+from functools import partial
 from synthesizrr.base.util import type_str, optional_dependency, as_list, get_default, EnvUtil, set_param_from_alias, \
     FileSystemUtil
 from synthesizrr.base.data import FileMetadata
 from synthesizrr.base.framework.evaluator.LocalEvaluator import LocalEvaluator
-from synthesizrr.base.framework.algorithm import Algorithm
+from synthesizrr.base.framework.algorithm import Algorithm, TaskOrStr
+from synthesizrr.base.framework.metric import Metric, Metrics
 from synthesizrr.base.framework.task import LanguageModelTaskMixin, GenerativeLM
 from pydantic import root_validator, conint
+from pydantic.typing import Literal
 
 with optional_dependency('accelerate', 'torch', 'transformers'):
     import torch
     from torch.nn import Module as TorchModule
     from synthesizrr.base.framework.dl.torch import PyTorch
+    from torch.utils.data import DataLoader as TorchDataLoader
     from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 
 
@@ -25,7 +30,7 @@ with optional_dependency('accelerate', 'torch', 'transformers'):
 
         @root_validator(pre=True)
         def set_accelerate_evaluator_params(cls, params: Dict) -> Dict:
-            set_param_from_alias(params, param='model_weights_dtype', alias=['weights_dtype', 'model_dtype'])
+            set_param_from_alias(params, param='model_weights_dtype', alias=['weights_dtype', 'model_dtype', 'torch_dtype'])
             set_param_from_alias(params, param='use_hf_from_pretrained', alias=[
                 'hf_from_pretrained', 'use_hf_auto_model_class', 'hf_auto_model_class',
                 'use_hf_AutoModelClass', 'hf_AutoModelClass', 'use_hf_AutoModel', 'hf_AutoModel',
@@ -43,7 +48,7 @@ with optional_dependency('accelerate', 'torch', 'transformers'):
                 cache_dir: Optional[Union[FileMetadata, Dict, str]] = None,
                 **kwargs,
         ) -> PyTorch:
-            from base.algorithm import ALEXA_TM_SEQ2SEQ_MODEL_NAMES
+            from synthesizrr.base.algorithm.alexa_teacher_models import AlexaTMSeq2Seq, ALEXA_TM_SEQ2SEQ_MODEL_NAMES
 
             kwargs.pop('device', None)  ## We manage the device-allocation in the rest of this function.
             kwargs.pop('model_dir', None)  ## Do not allow overriding model_dir
@@ -91,7 +96,7 @@ with optional_dependency('accelerate', 'torch', 'transformers'):
                 hyperparams: Optional[Dict] = None,
                 **kwargs,
         ) -> Union[LanguageModelTaskMixin, PyTorch]:
-            from base.algorithm.huggingface.transformers import HFPyTorchModel
+            from synthesizrr.base.algorithm.huggingface.transformers import HFPyTorchModel
             device_map: Union[Dict, str] = self._hf_accelerate_device_map(num_devices=num_devices)
             hyperparams: Dict = get_default(hyperparams, self.hyperparams)
             hyperparams: Dict = {
@@ -178,7 +183,7 @@ with optional_dependency('accelerate', 'torch', 'transformers'):
                 cache_dir: Union[FileMetadata, Dict, str],
                 **kwargs
         ) -> TorchModule:
-            from base.algorithm.huggingface.transformers import HFPyTorchModel
+            from synthesizrr.base.algorithm.huggingface.transformers import HFPyTorchModel
             if model_dir is None:
                 if isinstance(pt_model, HFPyTorchModel):
                     model_dir: FileMetadata = pt_model.download_model_to_cache_dir(cache_dir=cache_dir, **kwargs)
@@ -257,7 +262,7 @@ with optional_dependency('accelerate', 'torch', 'transformers'):
                 num_devices: conint(ge=0),
                 **kwargs,
         ) -> PyTorch:
-            from base.algorithm import AlexaTMSeq2Seq
+            from synthesizrr.base.algorithm.alexa_teacher_models import AlexaTMSeq2Seq
             if num_devices % 2 != 0:
                 raise ValueError(f'AlexaTM 20B can only be distributed across an even number of devices.')
             ## Load the model into CPU memory:

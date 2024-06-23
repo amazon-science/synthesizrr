@@ -83,7 +83,7 @@ with optional_dependency('langchain'):
                         retries=self.hyperparams.retries,
                         wait=self.hyperparams.retry_wait,
                         jitter=self.hyperparams.retry_jitter,
-                        silent=True,
+                        silent=False,
                     )
                 except Exception as e:
                     Log.error(format_exception_msg(e))

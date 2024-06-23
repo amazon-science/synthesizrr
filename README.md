@@ -2,6 +2,9 @@
 
 This repository contains the implementation of the paper "SynthesizRR: Generating Diverse Datasets with Retrieval Augmentation" (https://arxiv.org/abs/2405.10040)
 
+
+Our proposed approach is below. Refer Algorithm 1 in the paper for details: https://arxiv.org/abs/2405.10040
+
 ![SynthesizRR High Level Diagram](img/high-level-diagram.jpg)
 
 ## Installing dependencies

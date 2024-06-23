@@ -11,8 +11,8 @@ from synthesizrr.base.framework.metric import Metric, Metrics
 from synthesizrr.base.framework.task_data import Dataset
 from synthesizrr.base.framework.predictions import Predictions, load_predictions, save_predictions
 from synthesizrr.base.util import Parameters, MutableParameters, Registry, FractionalBool, safe_validate_arguments, StringUtil, \
-    Timeout24Hr, all_are_false, accumulate, any_are_none, is_function, as_list, get_default, \
-    random_sample, Log, format_exception_msg, start_daemon, stop_daemon, run_concurrent
+    Timeout, Timeout24Hr, TimeoutNever, all_are_false, accumulate, any_are_none, is_function, as_list, get_default, \
+    random_sample, Log, format_exception_msg, start_daemon, stop_daemon, run_concurrent, NeverFailJsonEncoder
 from synthesizrr.base.util.aws import S3Util
 from pydantic import root_validator, Extra, conint, confloat
 from pydantic.typing import Literal
@@ -42,7 +42,7 @@ class Evaluator(MutableParameters, Registry, ABC):
     validate_inputs: Optional[FractionalBool] = None
     validate_outputs: Optional[FractionalBool] = None
     ## How long to cache the model. By default, do not cache the model (i.e. cache_timeout=None):
-    cache_timeout: Optional[Union[Timeout24Hr, confloat(gt=0, le=60 * 60 * 24)]] = None
+    cache_timeout: Optional[Union[Timeout, confloat(gt=0)]] = None
     _cache_timeout_daemon_id: Optional[str] = None
     _cache_timeout_daemons: Dict[str, List[bool]] = {}
     _evaluator_is_running: bool = False
@@ -61,7 +61,10 @@ class Evaluator(MutableParameters, Registry, ABC):
         Alias.set_verbosity(params)
 
         if isinstance(params.get('cache_timeout'), (int, float)):
-            params['cache_timeout']: Timeout24Hr = Timeout24Hr(timeout=params['cache_timeout'])
+            if math.isinf(params['cache_timeout']):
+                params['cache_timeout']: Timeout = TimeoutNever()
+            else:
+                params['cache_timeout']: Timeout = Timeout24Hr(timeout=params['cache_timeout'])
 
         ## Ensure user-defined classes are registered on the driver (i.e. Jupyter/IPython).
         custom_definitions: List[Any] = as_list(params.get('custom_definitions', ()))
@@ -280,7 +283,7 @@ class Evaluator(MutableParameters, Registry, ABC):
             params_dict['AlgorithmClass'] = self.algorithm_display_name
             excuded.add('AlgorithmClass')
         params_dict: Dict = {**params_dict, **self.dict(exclude=excuded)}
-        params_str: str = json.dumps(params_dict, indent=4)
+        params_str: str = json.dumps(params_dict, indent=4, cls=NeverFailJsonEncoder)
         out: str = f'{self.class_name} with params:\n{params_str}'
         return out
 

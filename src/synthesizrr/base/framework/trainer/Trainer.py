@@ -12,7 +12,7 @@ from synthesizrr.base.framework.predictions import Predictions, save_predictions
 from synthesizrr.base.framework.tracker import Tracker, DEFAULT_TRACKER_PARAMS
 from synthesizrr.base.util import Parameters, Registry, FractionalBool, random_sample, safe_validate_arguments, StringUtil, \
     any_are_not_none, any_are_none, is_function, as_list, get_default, set_param_from_alias, classproperty, \
-    optional_dependency, all_are_not_none, all_are_none, Timer, type_str, format_exception_msg
+    optional_dependency, all_are_not_none, all_are_none, Timer, type_str, format_exception_msg, NeverFailJsonEncoder
 from pydantic import root_validator, Extra, conint
 from pydantic.typing import Literal
 
@@ -263,7 +263,7 @@ class Trainer(Parameters, Registry, ABC):
             params_dict['AlgorithmClass'] = self.algorithm_display_name
             excuded.add('AlgorithmClass')
         params_dict: Dict = {**params_dict, **self.dict(exclude=excuded)}
-        params_str: str = json.dumps(params_dict, indent=4)
+        params_str: str = json.dumps(params_dict, indent=4, cls=NeverFailJsonEncoder)
         out: str = f'{self.class_name} with params:\n{params_str}'
         return out
 

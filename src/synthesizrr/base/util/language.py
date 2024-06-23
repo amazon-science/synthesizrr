@@ -1,7 +1,7 @@
 import gc
 from typing import *
 import typing, types, typing_extensions
-import sys, os, time, functools, datetime as dt, string, inspect, re, random, math, ast, warnings, logging, hashlib
+import sys, os, time, functools, datetime as dt, string, inspect, re, random, math, ast, warnings, logging, json
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_scalar as pd_is_scalar
@@ -801,10 +801,38 @@ class alias(auto):
             super(alias, self).__setattr__(attr_name, attr_value)
 
     def __getattribute__(self, attr_name: str):
+        """
+        Refer these lines in Python 3.10.9 enum.py:
+
+        class _EnumDict(dict):
+            ...
+            def __setitem__(self, key, value):
+                ...
+                elif not _is_descriptor(value):
+                    ...
+                    if isinstance(value, auto):
+                        if value.value == _auto_null:
+                            value.value = self._generate_next_value(
+                                    key,
+                                    1,
+                                    len(self._member_names),
+                                    self._last_values[:],
+                                    )
+                            self._auto_called = True
+                        value = value.value
+                    ...
+                ...
+            ...
+
+        """
         if attr_name == 'value':
             if object.__getattribute__(self, 'enum_name') is None:
                 ## Gets _auto_null as alias inherits auto class but does not set `value` class member; refer enum.py:142
-                return object.__getattribute__(self, 'value')
+                try:
+                    return object.__getattribute__(self, 'value')
+                except Exception as e:
+                    from enum import _auto_null
+                    return _auto_null
             return self
         return object.__getattribute__(self, attr_name)
 
@@ -1727,7 +1755,7 @@ def get_unique(
 
 
 def any_item(
-        struct: Union[List, Tuple, Set, Dict, str],
+        struct: Union[List, Tuple, Set, Dict, ValuesView, str],
         *,
         seed: Optional[int] = None,
         raise_error: bool = True,
@@ -2486,6 +2514,62 @@ class Utility:
 ParametersSubclass = TypeVar('ParametersSubclass', bound='Parameters')
 
 
+class NeverFailJsonEncoder(json.JSONEncoder):
+    def default(self, obj):
+        # print(f'Running NeverFailJsonEncoder')
+        if isinstance(obj, (np.integer, int)):
+            return int(obj)
+        elif isinstance(obj, (np.bool_, bool)):
+            return bool(obj)
+        elif isinstance(obj, (np.floating, float)):
+            return float(obj)
+        elif isinstance(obj, (np.ndarray, pd.Series, list, set, tuple)):
+            return obj.tolist()
+        elif isinstance(obj, complex):
+            return obj.real, obj.imag
+        elif isinstance(obj, (
+                types.FunctionType,
+                types.MethodType,
+                types.BuiltinFunctionType,
+                types.BuiltinMethodType,
+                types.LambdaType,
+                functools.partial,
+        )):
+            return {
+                '<function>': f'{obj.__module__}.{obj.__qualname__}{inspect.signature(obj)}'
+            }
+        with optional_dependency('torch'):
+            import torch
+            if isinstance(obj, torch.dtype):
+                return str(obj)
+        try:
+            return super(NeverFailJsonEncoder, self).default(obj)
+        except TypeError as e:
+            obj_members: List[str] = []
+            for k, v in obj.__dict__.items():
+                if is_function(v):
+                    continue
+                k_str: str = str(k)
+                # try:
+                #     v_str: str = json.dumps(
+                #         v,
+                #         cls=NeverFailJsonEncoder,
+                #         skipkeys=self.skipkeys,
+                #         ensure_ascii=self.ensure_ascii,
+                #         check_circular=self.check_circular,
+                #         allow_nan=self.allow_nan,
+                #         sort_keys=self.sort_keys,
+                #         indent=self.indent,
+                #         separators=(self.item_separator, self.key_separator),
+                #     )
+                # except TypeError as e:
+                #     v_str: str = '...'
+                v_str: str = '...'
+                obj_members.append(f'{k_str}={v_str}')
+            obj_members_str: str = ', '.join(obj_members)
+            return f'{obj.__class__.__name__}({obj_members_str})'
+
+
 class Parameters(BaseModel, ABC):
     ## Ref on Pydantic + ABC: https://pydantic-docs.helpmanual.io/usage/models/#abstract-base-classes
     ## Needed to work with Registry.alias...this needs to be on a subclass of `BaseModel`.
@@ -2517,6 +2601,11 @@ class Parameters(BaseModel, ABC):
     def dict(self, *args, exclude: Optional[Any] = None, **kwargs) -> Dict:
         exclude: Set[str] = as_set(get_default(exclude, [])).union(as_set(self.dict_exclude))
         return super(Parameters, self).dict(*args, exclude=exclude, **kwargs)
+
+    def json(self, *args, encoder: Optional[Any] = None, indent: Optional[int] = None, **kwargs) -> str:
+        if encoder is None:
+            encoder = functools.partial(json.dumps, cls=NeverFailJsonEncoder, indent=indent)
+        return super(Parameters, self).json(*args, encoder=encoder, **kwargs)
 
     @classproperty
     def _constructor(cls) -> Type["Parameters"]:
@@ -2727,6 +2816,10 @@ class Timeout1Hr(Timeout):
 
 class Timeout24Hr(Timeout):
     timeout: confloat(gt=0, le=60 * 60 * 24)
+
+
+class TimeoutNever(Timeout):
+    timeout: float = math.inf
 
 
 class Timeout1Week(Timeout):
@@ -3041,30 +3134,39 @@ def create_progress_bar(
         smoothing: float = 0.1,
         **kwargs
 ) -> TqdmProgressBar:
-    if style == 'auto':
-        with optional_dependency('ipywidgets'):
-            ncols: Optional[int] = None
-        return AutoTqdmProgressBar(
-            ncols=ncols,
-            unit=unit,
-            smoothing=smoothing,
-            **kwargs
-        )
-    elif style == 'notebook':
-        with optional_dependency('ipywidgets'):
-            ncols: Optional[int] = None
-        return NotebookTqdmProgressBar(
-            ncols=ncols,
-            unit=unit,
-            smoothing=smoothing,
-            **kwargs
-        )
-    else:
-        return StdTqdmProgressBar(
-            ncols=ncols,
-            unit=unit,
-            smoothing=smoothing,
-            **kwargs
+    try:
+        if style == 'auto':
+            with optional_dependency('ipywidgets'):
+                ncols: Optional[int] = None
+            return AutoTqdmProgressBar(
+                ncols=ncols,
+                unit=unit,
+                smoothing=smoothing,
+                **kwargs
+            )
+        elif style == 'notebook':
+            with optional_dependency('ipywidgets'):
+                ncols: Optional[int] = None
+            return NotebookTqdmProgressBar(
+                ncols=ncols,
+                unit=unit,
+                smoothing=smoothing,
+                **kwargs
+            )
+        else:
+            return StdTqdmProgressBar(
+                ncols=ncols,
+                unit=unit,
+                smoothing=smoothing,
+                **kwargs
+            )
+    except Exception as e:
+        kwargs['style'] = style
+        kwargs['unit'] = unit
+        kwargs['ncols'] = ncols
+        kwargs['smoothing'] = smoothing
+        raise ValueError(
+            f'Error: could not create progress bar using settings: {kwargs}. Stack trace:\n{format_exception_msg(e)}'
         )
 
 
@@ -3143,12 +3245,14 @@ def ignore_all_output():
 _Comparable = Union[int, float, str]
 
 
-def is_sorted(l: Union[List[_Comparable], Tuple[_Comparable, ...]]) -> bool:
+def is_sorted(l: Union[List[Any], Tuple[Any, ...]], *, reverse: bool = False) -> bool:
     assert isinstance(l, (list, tuple))
     length = len(l)
     assert length > 0
     if length == 1:
         return True
+    if reverse:
+        l: List[Any] = list(l)[::-1]
     for x, x_next in zip(l[0:length - 1], l[1:length]):
         if x > x_next:
             return False
@@ -3203,6 +3307,7 @@ def plotsum(
         assert len(set(p[0] for p in plots_list)) == len(order)
         ordered_plots_list: List[Any] = []
         for order_item in order:
+            plot_str: Optional = None
             for plot_str, plot in plots_list:
                 if plot_str == order_item:
                     break

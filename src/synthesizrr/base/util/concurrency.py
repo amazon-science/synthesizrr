@@ -1,4 +1,5 @@
 """A collection of concurrency utilities to augment the Python language:"""
+import logging
 from typing import *
 import time, traceback, random, sys, math, gc
 from datetime import datetime
@@ -161,7 +162,7 @@ def run_concurrent(
     if executor is None:
         executor: ThreadPoolExecutor = _GLOBAL_THREAD_POOL_EXECUTOR
     try:
-        # print(f'Running {fn_str(fn)} using {Parallelize.threads} with max_workers={executor._max_workers}')
+        # logging.debug(f'Running {fn_str(fn)} using {Parallelize.threads} with max_workers={executor._max_workers}')
         return executor.submit(fn, *args, **kwargs)  ## return a future
     except BrokenThreadPool as e:
         if executor is _GLOBAL_THREAD_POOL_EXECUTOR:
@@ -216,7 +217,7 @@ def kill_thread(tid: int, exctype: Type[BaseException]):
     if not issubclass(exctype, BaseException):
         raise TypeError("Only types derived from BaseException are allowed")
     res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
-    print(f'...killed thread ID: {tid}')
+    logging.debug(f'...killed thread ID: {tid}')
     if res == 0:
         raise ValueError(f"Invalid thread ID: {tid}")
     elif res != 1:
@@ -398,10 +399,10 @@ def is_failed(x, *, pending_returns_false: bool = False) -> Optional[bool]:
         return True
 
 
-_RAY_ACCUMULATE_ITEM_WAIT: float = 1000e-3  ## 1000ms
+_RAY_ACCUMULATE_ITEM_WAIT: float = 100e-3  ## 100ms
 _LOCAL_ACCUMULATE_ITEM_WAIT: float = 10e-3  ## 10ms
 
-_RAY_ACCUMULATE_ITER_WAIT: float = 10e0  ## 10 sec
+_RAY_ACCUMULATE_ITER_WAIT: float = 1000e-3  ## 1000ms
 _LOCAL_ACCUMULATE_ITER_WAIT: float = 100e-3  ## 100ms
 
 
@@ -699,9 +700,9 @@ def retry(
         except Exception as e:
             latest_exception = traceback.format_exc()
             if not silent:
-                print(f'Function call failed with the following exception:\n{latest_exception}')
+                logging.debug(f'Function call failed with the following exception:\n{latest_exception}')
                 if retry_num < (retries - 1):
-                    print(f'Retrying {retries - (retry_num + 1)} more times...\n')
+                    logging.debug(f'Retrying {retries - (retry_num + 1)} more times...\n')
             time.sleep(np.random.uniform(wait - wait * jitter, wait + wait * jitter))
     raise RuntimeError(f'Function call failed {retries} times.\nLatest exception:\n{latest_exception}\n')
 
@@ -758,7 +759,7 @@ def daemon(wait: float, exit_on_error: bool = False, sentinel: Optional[List] = 
                 try:
                     function(**kwargs)
                 except Exception as e:
-                    print(traceback.format_exc())
+                    logging.debug(traceback.format_exc())
                     if exit_on_error:
                         raise e
                 end = time.perf_counter()

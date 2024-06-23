@@ -348,7 +348,12 @@ class Chain(MutableParameters):
         step_i, step = 0, self.steps[0]
         try:
             chain_exn.started_at = timer.start_datetime
-            info_logger(f'{exn_name}: Execution started in process#{os.getpid()}, thread#{threading.get_ident()}.')
+            info_logger(
+                f'{exn_name}: '
+                f'Execution started in process#{os.getpid()}, '
+                f'thread#{threading.get_ident()} '
+                f'at {StringUtil.now()}.'
+            )
             for step_i, step in enumerate(self.steps):
                 if chain_exn.status is Status.STOPPED:
                     break
@@ -603,6 +608,12 @@ class ChainExecution(MutableParameters):
     @property
     def num_successful_steps(self) -> int:
         return sum([True for step in self.steps if step.status is Status.SUCCEEDED])
+
+    @property
+    def current_running_step(self) -> Optional[Step]:
+        if not self.running():
+            return None
+        return self.chain_template.steps[self.num_executed_steps].copy()
 
     @property
     def is_not_completed(self) -> bool:

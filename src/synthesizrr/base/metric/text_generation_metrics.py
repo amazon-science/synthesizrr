@@ -1,20 +1,22 @@
 from typing import *
 from abc import ABC, abstractmethod
-import pandas as pd, numpy as np, ray, math, random, gc
+import pandas as pd, numpy as np, ray, math, random, gc, re
 from collections import defaultdict
 from synthesizrr.base.constants import Parallelize, Task, DataSplit, TaskOrStr, MLType, Alias, Status, DataLayout
 from synthesizrr.base.util import as_tuple, type_str, optional_dependency, ignore_stdout_and_stderr, dispatch, accumulate, \
     as_list, flatten1d, iter_batches, accumulate_iter, get_default, parameterized_flatten, remove_nulls, \
     only_key, dispatch_executor, Timer, EnvUtil, set_param_from_alias, all_are_none, all_are_not_none, \
     ignore_warnings_and_stdout, best_k, whitespace_normalize, str_normalize, punct_normalize, remove_keys, StringUtil, \
-    multiple_are_not_none, format_exception_msg, entropy
+    multiple_are_not_none, format_exception_msg, entropy, plotsum
 from synthesizrr.base.framework import Dataset, Predictions, TabularMetric, Metric, CountingMetric, PercentageMetric, Evaluator, \
-    Metrics, Datasets, Trainer, FileMetadata, RayTuneTrainer, RayTuneTrainerFinalModelsError, RayTuneTrainerTuneError
+    Metrics, Datasets, Trainer, FileMetadata, SaveDatasetOrPredictions, load_predictions, Chain, ChainExecution, \
+    RayTuneTrainer, RayTuneTrainerFinalModelsError, RayTuneTrainerTuneError
 from synthesizrr.base.framework import TextGenerations, NextTokens, TextGenerationsPredictionsBase, GENERATED_TEXTS_COL, \
     ClassificationData, Prompts, TEXT_PROMPT_COL, PROMPT_TEMPLATE_INDEX_COL_PREFIX
 from synthesizrr.base.framework.trainer.RayTuneTrainer import _ray_agg_final_model_metric_stats
 from synthesizrr.base.framework.evaluator.RayEvaluator import LoadBalancingStrategy
 from synthesizrr.base.framework.dl.torch import clear_device_cache
+from synthesizrr.base.constants import AggregationStrategy
 from ray import tune
 from pydantic import conint, confloat, root_validator, Extra
 from pydantic.typing import Literal
@@ -947,16 +949,24 @@ with optional_dependency('mauve-text'):
         ) -> float:
             import mauve as _mauve
             with ignore_warnings_and_stdout():  ## Suppress tqdm & other outputs in MAUVE calculation
-                if settings.get('device_id') is not None:
+                if settings.get('device_id') is not None:  ## Use a randomly-assigned GPU.
                     settings['device_id'] = random.choice(EnvUtil.cuda_visible_devices())
                 clear_device_cache()
-                computed_mauve = _mauve.compute_mauve(
-                    p_text=ref_texts,
-                    q_text=gen_texts,
-                    **settings,
-                )
-                clear_device_cache()
-            return float(computed_mauve.mauve)
+                try:
+                    computed_mauve = _mauve.compute_mauve(
+                        p_text=ref_texts,
+                        q_text=gen_texts,
+                        **settings,
+                    )
+                    return float(computed_mauve.mauve)
+                finally:
+                    global MODEL
+                    try:
+                        MODEL.to('cpu')
+                        del MODEL
+                    except NameError as e:
+                        pass
+                    clear_device_cache()
 
 with optional_dependency('nltk', 'spacy'):
     from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
@@ -1380,54 +1390,58 @@ class LabelPreservation(Metric):
                 **dict(verbosity=self.params.verbosity, task=task)
             }
         )
-        if isinstance(data, TextGenerationsPredictionsBase):
-            clf_dataset: ClassificationData = _text_gens_to_clf_dataset(
-                data,
-                data_split=data.data_split,
-                task=task,
-                label_col=self.params.label_col,
-                text_col=self.params.text_col,
-            )
-        else:
-            clf_dataset: ClassificationData = data
-        assert isinstance(clf_dataset, ClassificationData)
-        clf_dataset: ClassificationData = clf_dataset.read()
-        if self.params.metrics is None:
-            clf_preds = evaluator.evaluate(
-                clf_dataset,
-                batch_size=self.params.batch_size,
-                submission_batch_size=self.params.submission_batch_size,
-                preds=True,
-                tracker=False,
-                load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN,
-            )
-            if len(clf_preds) != len(clf_dataset):
-                raise ValueError(
-                    f'Number of predictions does not match number of inputs: '
-                    f'Inputs={len(clf_dataset)}, predictions={len(clf_preds)}.'
+        try:
+            if isinstance(data, TextGenerationsPredictionsBase):
+                clf_dataset: ClassificationData = _text_gens_to_clf_dataset(
+                    data,
+                    data_split=data.data_split,
+                    task=task,
+                    label_col=self.params.label_col,
+                    text_col=self.params.text_col,
                 )
-            return {
-                'predictions': clf_preds,
-            }
-        else:
-            clf_preds, clf_metrics = evaluator.evaluate(
-                clf_dataset,
-                batch_size=self.params.batch_size,
-                submission_batch_size=self.params.submission_batch_size,
-                metrics=self.params.metrics,
-                preds=True,
-                tracker=False,
-                load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN,
-            )
-            if len(clf_preds) != len(clf_dataset):
-                raise ValueError(
-                    f'Number of predictions does not match number of inputs: '
-                    f'Inputs={len(clf_dataset)}, predictions={len(clf_preds)}.'
+            else:
+                clf_dataset: ClassificationData = data
+            assert isinstance(clf_dataset, ClassificationData)
+            clf_dataset: ClassificationData = clf_dataset.read()
+            if self.params.metrics is None:
+                clf_preds = evaluator.evaluate(
+                    clf_dataset,
+                    batch_size=self.params.batch_size,
+                    submission_batch_size=self.params.submission_batch_size,
+                    preds=True,
+                    tracker=False,
+                    load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN,
                 )
-            return {
-                'predictions': clf_preds,
-                'metrics': clf_metrics,
-            }
+                if len(clf_preds) != len(clf_dataset):
+                    raise ValueError(
+                        f'Number of predictions does not match number of inputs: '
+                        f'Inputs={len(clf_dataset)}, predictions={len(clf_preds)}.'
+                    )
+                return {
+                    'predictions': clf_preds,
+                }
+            else:
+                clf_preds, clf_metrics = evaluator.evaluate(
+                    clf_dataset,
+                    batch_size=self.params.batch_size,
+                    submission_batch_size=self.params.submission_batch_size,
+                    metrics=self.params.metrics,
+                    preds=True,
+                    tracker=False,
+                    load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN,
+                )
+                if len(clf_preds) != len(clf_dataset):
+                    raise ValueError(
+                        f'Number of predictions does not match number of inputs: '
+                        f'Inputs={len(clf_dataset)}, predictions={len(clf_preds)}.'
+                    )
+                return {
+                    'predictions': clf_preds,
+                    'metrics': clf_metrics,
+                }
+        finally:
+            evaluator.stop()
+            clear_device_cache()
 
 
 class TextGenerationStudent(Metric):
@@ -1654,3 +1668,213 @@ class TextGenerationStudent(Metric):
         else:
             trialwise_final_model_metrics, detailed_final_model_metrics = self.value
         return _ray_agg_final_model_metric_stats(trialwise_final_model_metrics, data_split=data_split)
+
+
+with optional_dependency('sentence_transformers'):
+    from sentence_transformers import SentenceTransformer
+    from sklearn.metrics.pairwise import cosine_similarity
+    from synthesizrr.base.framework.task.dense_retrieval import _normalize_l2
+
+
+    class LabelwiseCosineSimilarity(TabularMetric):
+
+        class Params(TabularMetric.Params):
+            label_col: str
+            num_cpus: int = 8
+            num_gpus: int = 1
+            generations_col: str = GENERATED_TEXTS_COL
+            embeddings_col: str = 'embeddings'
+            hf_embedding_model_name: str = 'all-mpnet-base-v2'
+
+        def compute_only(self, data: TextGenerationsPredictionsBase) -> pd.DataFrame:
+            if not isinstance(data, TextGenerationsPredictionsBase):
+                raise ValueError(
+                    f'Expected data to be a {NextTokens} or {TextGenerations} instance; '
+                    f'found: {type_str(data)}'
+                )
+            labelwise_cosine_sims: pd.DataFrame = self.calc_labelwise_cosine_sims(
+                data.data.pandas()[[self.params.generations_col, self.params.label_col]],
+                generations_col=self.params.generations_col,
+                label_col=self.params.label_col,
+                embeddings_col=self.params.embeddings_col,
+                hf_embedding_model_name=self.params.hf_embedding_model_name,
+            )
+            return labelwise_cosine_sims
+
+        @classmethod
+        def calc_labelwise_cosine_sims(
+                cls,
+                df: pd.DataFrame,
+                *,
+                generations_col: str,
+                label_col: str,
+                embeddings_col: str,
+                hf_embedding_model_name: str,
+        ) -> pd.DataFrame:
+            encoder = SentenceTransformer(hf_embedding_model_name)
+            try:
+                df[embeddings_col] = list(
+                    encoder.encode(df[generations_col].apply(lambda x: str(x) if x is not None else '').to_list())
+                )
+                # print(df[embeddings_col])
+                labelspace: List[str] = sorted(list(df[label_col].unique()))
+                labelwise_cosine_sims: List[Dict] = []
+                for row_idx, lb_row in enumerate(labelspace):  ## Each row
+                    labelwise_cosine_sims.append({})
+                    for col_idx, lb_col in enumerate(labelspace):  ## Each cell (column) in each row
+                        labelwise_cosine_sims[-1][lb_col] = cls.get_cosine_sim_for_label_i_and_j(
+                            embeddings_lb_i=df.query(f'{label_col} == "{lb_row}"')[embeddings_col].to_list(),
+                            embeddings_lb_j=df.query(f'{label_col} == "{lb_col}"')[embeddings_col].to_list(),
+                        )
+                labelwise_cosine_sims: pd.DataFrame = pd.DataFrame(
+                    labelwise_cosine_sims,
+                    index=labelspace,
+                )[labelspace]
+                return labelwise_cosine_sims
+            finally:
+                del encoder
+                clear_device_cache()
+
+        @classmethod
+        def get_cosine_sim_for_label_i_and_j(
+                cls,
+                embeddings_lb_i: np.ndarray,
+                embeddings_lb_j: np.ndarray,
+        ) -> np.float64:
+            # print(len(embeddings_lb_i))
+            # print(embeddings_lb_i[:3])
+            return cosine_similarity(
+                embeddings_lb_i,
+                embeddings_lb_j,
+            ).sum() / (len(embeddings_lb_i) * len(embeddings_lb_j))
+
+
+    class PairwiseCosineSimilarity(TabularMetric):
+
+        class Params(TabularMetric.Params):
+            num_cpus: int = 8
+            num_gpus: int = 1
+            generations_col: str = GENERATED_TEXTS_COL
+            embeddings_col: str = 'embeddings'
+            hf_embedding_model_name: str = 'all-mpnet-base-v2'
+
+        def compute_only(self, data: TextGenerationsPredictionsBase) -> pd.DataFrame:
+            if not isinstance(data, TextGenerationsPredictionsBase):
+                raise ValueError(
+                    f'Expected data to be a {NextTokens} or {TextGenerations} instance; '
+                    f'found: {type_str(data)}'
+                )
+
+            pairwise_cosine_sims = self.calc_pairwise_cosine_sims(
+                data.data.pandas(),
+                index_col=data.data_schema.index_col,
+                generations_col=self.params.generations_col,
+                embeddings_col=self.params.embeddings_col,
+                hf_embedding_model_name=self.params.hf_embedding_model_name,
+            )
+            return pairwise_cosine_sims
+
+        @classmethod
+        def calc_pairwise_cosine_sims(
+                cls,
+                df: pd.DataFrame,
+                *,
+                index_col: str,
+                generations_col: str,
+                embeddings_col: str,
+                hf_embedding_model_name: str,
+        ) -> pd.DataFrame:
+            encoder = SentenceTransformer(hf_embedding_model_name)
+            try:
+                num_rows: int = len(df)
+                embeddings: np.ndarray = encoder.encode(
+                    df[generations_col].apply(lambda x: str(x) if x is not None else '').to_list()
+                )
+                embeddings_norm: np.ndarray = _normalize_l2(embeddings)
+                pairwise_cosine_sims_np: np.ndarray = embeddings_norm.dot(embeddings_norm.T)
+                assert pairwise_cosine_sims_np.shape == (num_rows, num_rows)
+
+                pairwise_cosine_sims: List[Dict] = []
+                for i, idx_i in enumerate(df[index_col]):
+                    pairwise_cosine_sims.append({
+                        index_col: idx_i,
+                        'cosine_sims': {},
+                    })
+                    for j, (idx_j, cosine_sim) in enumerate(zip(df[index_col], pairwise_cosine_sims_np[i, :])):
+                        pairwise_cosine_sims[-1]['cosine_sims'][idx_j] = float(cosine_sim)
+                pairwise_cosine_sims: pd.DataFrame = pd.DataFrame(
+                    pairwise_cosine_sims,
+                )
+                return pairwise_cosine_sims
+            finally:
+                del encoder
+                clear_device_cache()
+
+        def to_labelwise_cosine_sims(
+                self,
+                pairwise_cosine_sims: pd.DataFrame,
+                *,
+                agg: Optional[AggregationStrategy],
+                get_lb: Callable,
+                index_col: str,
+        ) -> pd.DataFrame:
+            # get_lb = lambda idx: re.search(r'label=([^#-]+)', idx).group(1)
+            if agg is not None:
+                agg: AggregationStrategy = AggregationStrategy(agg)
+            labelspace: List[str] = sorted(list(pairwise_cosine_sims[index_col].apply(get_lb).unique()))
+            assert len(labelspace) > 1
+            labelsiwise_cosine_sims = {}
+            for idx_i, cosine_sims in zip(pairwise_cosine_sims[index_col], pairwise_cosine_sims['cosine_sims']):
+                labelsiwise_cosine_sims.setdefault(get_lb(idx_i), {})
+                for idx_j, cosine_sim in cosine_sims.items():
+                    labelsiwise_cosine_sims[get_lb(idx_i)].setdefault(get_lb(idx_j), [])
+                    labelsiwise_cosine_sims[get_lb(idx_i)][get_lb(idx_j)].append(round(float(cosine_sim), 6))
+            labelsiwise_cosine_sims_agg: Dict[str, Dict[str, Union[float, List[float]]]] = {}
+            for lb_i, d in labelsiwise_cosine_sims.items():
+                assert isinstance(lb_i, str)
+                labelsiwise_cosine_sims_agg.setdefault(lb_i, {})
+                for lb_j, cosine_sims_list in labelsiwise_cosine_sims[lb_i].items():
+                    assert isinstance(lb_j, str)
+                    labelsiwise_cosine_sims_agg[lb_i][lb_j] = self._aggregate(cosine_sims_list, agg=agg)
+            return pd.DataFrame(labelsiwise_cosine_sims_agg)[labelspace]
+
+        @classmethod
+        def _aggregate(
+                cls,
+                vals: List[float],
+                *,
+                agg: Optional[AggregationStrategy],
+        ) -> Union[float, List[float]]:
+            if agg is None:
+                return vals
+            elif agg is AggregationStrategy.AVERAGE:
+                return float(np.mean(vals))
+            elif agg is AggregationStrategy.MIN:
+                return float(np.min(vals))
+            elif agg is AggregationStrategy.MAX:
+                return float(np.max(vals))
+            elif agg is AggregationStrategy.MEDIAN:
+                return float(np.median(vals))
+            raise NotImplementedError(f'Cannot aggregate metrics using {agg}')
+
+        @classmethod
+        def plot_labelwise_cosine_sims_kde(
+                cls,
+                labelwise_cosine_sims_df: pd.DataFrame,
+                *,
+                return_plots: bool = False,
+        ):
+            labelspace: List[str] = sorted(list(labelwise_cosine_sims_df.columns))
+            plots = []
+            for i, lb_i in enumerate(labelspace):
+                for j, lb_j in enumerate(labelspace):
+                    plots.append(
+                        pd.Series(labelwise_cosine_sims_df.iloc[i, j]).hvplot.kde().opts(
+                            width=150,
+                            height=150,
+                            title=f'cosine_sim({lb_i}, {lb_j})',
+                            fontsize={'title': 8}
+                        ))
+            if return_plots:
+                return plots
+            return plotsum(plots, how='grid').cols(len(labelspace))

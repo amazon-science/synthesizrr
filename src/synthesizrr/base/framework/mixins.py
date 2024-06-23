@@ -386,6 +386,13 @@ class InputOutputDataMixin(TaskRegistryMixin, ABC):
         return next(self.iter(batch_size=n, **kwargs))
 
     @safe_validate_arguments
+    def rename_columns(self, columns: Union[Dict, Callable]) -> InputOutputDataMixin:
+        return self.update_params(
+            data=self.data.rename(columns=columns),
+            data_schema=self.data_schema.rename(columns=columns),
+        )
+
+    @safe_validate_arguments
     def read(
             self,
             *,

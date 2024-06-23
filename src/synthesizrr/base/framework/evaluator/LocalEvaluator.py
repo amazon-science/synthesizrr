@@ -2,7 +2,7 @@ from typing import *
 import time, traceback, gc, os, warnings, io, numpy as np, pandas as pd
 from math import inf
 from functools import partial
-from synthesizrr.base.util import Log, StringUtil, get_default, confloat, safe_validate_arguments, Timer, Timeout24Hr
+from synthesizrr.base.util import Log, StringUtil, get_default, confloat, safe_validate_arguments, Timer, Timeout24Hr, Timeout
 from synthesizrr.base.data import FileMetadata
 from synthesizrr.base.framework.tracker.Tracker import Tracker
 from synthesizrr.base.framework.evaluator.Evaluator import Evaluator
@@ -17,7 +17,7 @@ class LocalEvaluator(Evaluator):
     aliases = ['local', 'SimpleEvaluator', 'simple']
 
     ## Cache model locally for 15 mins:
-    cache_timeout: Optional[Union[Timeout24Hr, confloat(gt=0, le=60 * 60 * 24)]] = Timeout24Hr(timeout=60 * 15)
+    cache_timeout: Optional[Union[Timeout, confloat(gt=0)]] = Timeout24Hr(timeout=60 * 15)
 
     def _load_model(
             self,
@@ -26,12 +26,16 @@ class LocalEvaluator(Evaluator):
             **kwargs,
     ) -> Algorithm:
         kwargs.pop('model_dir', None)
+        cache_dir: FileMetadata = FileMetadata.of(
+            get_default(cache_dir, self.cache_dir)
+        ).mkdir(return_metadata=True)
         return Algorithm.of(**{
             **dict(
                 task=self.task,
                 algorithm=self.AlgorithmClass,
                 hyperparams=self.hyperparams,
                 model_dir=self.download_remote_model_to_cache_dir(**kwargs),
+                cache_dir=cache_dir,
             ),
             **kwargs
         })

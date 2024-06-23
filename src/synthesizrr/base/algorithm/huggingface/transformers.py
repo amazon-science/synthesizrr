@@ -17,8 +17,8 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
     from torch import Tensor
     from torch.nn.functional import softmax, sigmoid
     from synthesizrr.base.framework import Dataset, Classifier, EncodingRange
-    from synthesizrr.base.framework.dl.torch import PyTorch, Loss, Optimizer, LRScheduler, PyTorchBaseModel, PyTorchClassifierMixin, \
-        PyTorchMultiLabelClassifierMixin
+    from synthesizrr.base.framework.dl.torch import PyTorch, Loss, Optimizer, LRScheduler, \
+        PyTorchBaseModel, PyTorchClassifierMixin, PyTorchMultiLabelClassifierMixin
     from transformers import AutoModel, AutoTokenizer, AutoConfig, \
         PreTrainedModel, PreTrainedTokenizerBase, PretrainedConfig, \
         AutoModelForSequenceClassification, AutoModelForCausalLM, AutoModelForSeq2SeqLM, \
@@ -27,6 +27,12 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
         MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING_NAMES, MODEL_FOR_TOKEN_CLASSIFICATION_MAPPING_NAMES, \
         MODEL_FOR_CAUSAL_LM_MAPPING_NAMES, MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING_NAMES
     from transformers.generation.utils import GreedySearchDecoderOnlyOutput, SampleDecoderOnlyOutput
+    from transformers import (
+        LogitsProcessorList,
+        MinLengthLogitsProcessor, TemperatureLogitsWarper,
+        TopKLogitsWarper, TopPLogitsWarper,
+        TypicalLogitsWarper
+    )
     from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
     import huggingface_hub
     from transformers.utils.logging import is_progress_bar_enabled, enable_progress_bar, disable_progress_bar
@@ -94,7 +100,9 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                         config=config,
                         cache_dir=cache_dir,
                         trust_remote_code=True,
+                        token=self.hyperparams.api_key,
                         device_map=self.hyperparams.device_map,
+                        torch_dtype=self.hyperparams.torch_dtype,
                     )
             else:
                 # print(
@@ -105,11 +113,13 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                     return self.AutoModelClass.from_pretrained(
                         model_dir.path,
                         device_map=self.hyperparams.device_map,
+                        torch_dtype=self.hyperparams.torch_dtype,
                         **{
                             **self.hyperparams.model_config,
                             **dict(
                                 cache_dir=cache_dir,
                                 trust_remote_code=True,
+                                token=self.hyperparams.api_key,
                             ),
                         },
                     )
@@ -122,6 +132,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                     **dict(
                         cache_dir=self.cache_dir.path if self.cache_dir is not None else None,
                         trust_remote_code=True,
+                        token=self.hyperparams.api_key,
                     ),
                 },
             )
@@ -150,6 +161,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                             ## Ignore tensorflow-format files:
                             '*.h5', '*.h5.index.json',
                         ],
+                        token=self.hyperparams.api_key,
                     )
                     gc.collect()
                 elif download_strategy == 'load_model':
@@ -162,6 +174,8 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                             self.hyperparams.model_name,
                             cache_dir=cache_dir.path,
                             trust_remote_code=True,
+                            token=self.hyperparams.api_key,
+                            torch_dtype=self.hyperparams.torch_dtype,
                         )
                         del model
                         gc.collect()
@@ -255,13 +269,20 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                 'tokenizer', 'token2id', 'id2token', 'id2token_np',
             }
 
+        def post_initialize(self):
+            if self.hyperparams.device_map is None:
+                ## Only transfer the model if we are not using Accelerate:
+                self.transfer_model()
+
         class Hyperparameters(PyTorch.Hyperparameters):
             model_name: str
+            api_key: Optional[str] = None
             tokenizer_config: HFTokenizerConfig = dict()
             tokenizer_encode: HFTokenizerEncode = dict()
             tokenizer_special_tokens: Optional[Dict] = None
             model_config: Dict[str, Any] = dict()
             device_map: Optional[Union[Dict, str]] = None
+            torch_dtype: Optional[Union[torch.dtype, str]] = None
             optimizer: Optimizer = dict(
                 name='AdamW',
                 lr=5e-5,
@@ -274,6 +295,13 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                 set_param_from_alias(params, param='model_name', alias=[
                     'model', 'pretrained_model_name_or_path', 'model_name_or_path',
                 ])
+                set_param_from_alias(params, param='torch_dtype', alias=[
+                    'weights_dtype', 'model_dtype', 'model_weights_dtype',
+                ])
+                if params.get('torch_dtype') is not None:
+                    if isinstance(params['torch_dtype'], str):
+                        params['torch_dtype'] = getattr(torch, params['torch_dtype'])
+                    assert isinstance(params['torch_dtype'], torch.dtype)
                 return params
 
         def initialize(self, model_dir: Optional[FileMetadata] = None):
@@ -306,6 +334,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                     }),
                     cache_dir=self.cache_dir.path if self.cache_dir is not None else None,
                     trust_remote_code=True,
+                    token=self.hyperparams.api_key,
                 )
             else:
                 # print(
@@ -318,6 +347,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                         'pad_token', 'cache_dir', 'tokenizer_name',
                     }),
                     trust_remote_code=True,
+                    token=self.hyperparams.api_key,
                 )
 
         def save(self, model_dir: FileMetadata):
@@ -417,6 +447,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                         num_labels=self.num_labels,
                         cache_dir=self.cache_dir.path if self.cache_dir is not None else None,
                         trust_remote_code=True,
+                        token=self.hyperparams.api_key,
                     ),
                 },
             )
@@ -453,6 +484,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
                         problem_type="multi_label_classification",
                         cache_dir=self.cache_dir.path if self.cache_dir is not None else None,
                         trust_remote_code=True,
+                        token=self.hyperparams.api_key,
                     ),
                 },
             )
@@ -596,7 +628,7 @@ with optional_dependency('torch', 'sentencepiece', 'transformers', 'tokenizers',
             elif output_scores_format == 'logits':
                 assert renormalize_logits is False
                 assert min_possible_score == -inf
-                assert output_scores_tolerance is None ## Do not filter out any tokens.
+                assert output_scores_tolerance is None  ## Do not filter out any tokens.
             else:
                 raise NotImplementedError(f'Unsupported `output_scores_format`: "{output_scores_format}"')
             ## Check dim 0 has same size as number of examples:
