@@ -30,10 +30,17 @@ RESULTS_DIR = FileMetadata.of(
 IDX_COL: str = 'idx'
 LABEL_TEXT_COL: str = 'label_text'
 LABEL_VERBALIZATION_COL: str = 'label_verbalization'
+LABEL_VERBALIZATION_TEMPL: str = '{label_verbalization}'
+LABEL_VERBALIZATION_META_TEMPL: str = '{{label_verbalization}}'
+ICL_EXAMPLES_TEMPL: str = '{icl_examples}'
+ICL_EXAMPLES_META_TEMPL: str = '{{icl_examples}}'
 EXAMPLE_TEXT_COL: str = 'example_text'
 QUERY_TEXT_COL: str = 'query_text'
 RETRIEVED_TOP_K_COL: str = 'retrieved_top_k'
 RETRIEVED_CONTEXT_COL: str = 'retrieved_context'
+ICL_RETRIEVED_CONTEXT_TEMPL: str = '{{icl[retrieved_context]}}'
+ICL_EXAMPLE_TEXT_TEMPL: str = '{{icl[example_text]}}'
+RETRIEVED_CONTEXT_TEMPL: str = '{{retrieved_context}}'
 DISTANCE_COL: str = 'distance'
 DISTANCE_METRIC_COL: str = 'distance_metric'
 EFS_HUGGINGFACE_CACHE_DIR: FileMetadata = FileMetadata.of('/efs/.cache/huggingface/hub/')
@@ -41,6 +48,8 @@ DEFAULT_SEED_SET_DATA_SPLIT: DataSplit = DataSplit.TRAIN
 DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH: bool = True
 DEFAULT_SEED: int = 42
 LABEL_OVERALL: str = 'Overall'
+DEFAULT_TOP_P: confloat(ge=0.0, le=1.0) = 0.9
+DEFAULT_TEMPERATURE: confloat(ge=0.0, le=1.0) = 0.95
 
 
 def TEXT_GEN_REFERENCES_COL(data_split: DataSplit) -> str:
@@ -92,6 +101,7 @@ class Student(AutoEnum):
     TinyBert = alias('huawei-noah/TinyBERT_General_4L_312D')
     MiniLM = alias('all-MiniLM-L6-v2', 'sentence-transformers/all-MiniLM-L6-v2')
     DistilBERT = alias('distilbert-base-uncased')
+    DistilBERT_AttrPromptTable13 = alias('distilbert-base-uncased-attrprompt-table-13')
     BERT = alias('bert-base-uncased')
     DeBERTaV3Base = alias('microsoft/deberta-v3-base')
     DeBERTaV3Large = alias('microsoft/deberta-v3-large')
@@ -101,6 +111,7 @@ class Student(AutoEnum):
             Student.TinyBert: 'tinybert',
             Student.MiniLM: 'all_minilm_l6_v2',
             Student.DistilBERT: 'distilbert',
+            Student.DistilBERT_AttrPromptTable13: 'distilbert_attrprompt_t13',
             Student.BERT: 'bert_base_uncased',
             Student.DeBERTaV3Base: 'deberta_v3_base',
             Student.DeBERTaV3Large: 'deberta_v3_large',
@@ -111,6 +122,7 @@ class Student(AutoEnum):
             Student.TinyBert: 'huawei-noah/TinyBERT_General_4L_312D',
             Student.MiniLM: 'sentence-transformers/all-MiniLM-L6-v2',
             Student.DistilBERT: 'distilbert-base-uncased',
+            Student.DistilBERT_AttrPromptTable13: 'distilbert-base-uncased',
             Student.BERT: 'bert-base-uncased',
             Student.DeBERTaV3Base: 'microsoft/deberta-v3-base',
             Student.DeBERTaV3Large: 'microsoft/deberta-v3-large',
@@ -121,6 +133,7 @@ class Student(AutoEnum):
             Student.TinyBert: 'huggingface-SequenceClassification',
             Student.MiniLM: 'pytorch',
             Student.DistilBERT: 'huggingface-SequenceClassification',
+            Student.DistilBERT_AttrPromptTable13: 'huggingface-SequenceClassification',
             Student.BERT: 'huggingface-SequenceClassification',
             Student.DeBERTaV3Base: 'huggingface-SequenceClassification',
             Student.DeBERTaV3Large: 'huggingface-SequenceClassification',
@@ -222,6 +235,7 @@ class Student(AutoEnum):
             Student.TinyBert: 1e-4,
             Student.MiniLM: 5e-5,
             Student.DistilBERT: 5e-5,
+            Student.DistilBERT_AttrPromptTable13: 2e-5,
             Student.BERT: 5e-5,
             Student.DeBERTaV3Base: 5e-5,
             Student.DeBERTaV3Large: 2e-5,
@@ -232,6 +246,7 @@ class Student(AutoEnum):
             Student.TinyBert: 1,
             Student.MiniLM: 1,
             Student.DistilBERT: 1,
+            Student.DistilBERT_AttrPromptTable13: 1,
             Student.BERT: 4,
             Student.DeBERTaV3Base: 8,
             Student.DeBERTaV3Large: 8,
@@ -243,6 +258,7 @@ class Student(AutoEnum):
             Student.TinyBert: 32,
             Student.MiniLM: 32,
             Student.DistilBERT: 32,
+            Student.DistilBERT_AttrPromptTable13: 32,
             Student.BERT: 8,
             Student.DeBERTaV3Base: 4,
             Student.DeBERTaV3Large: 4,
@@ -253,6 +269,7 @@ class Student(AutoEnum):
             Student.TinyBert: 1,
             Student.MiniLM: 1,
             Student.DistilBERT: 4,
+            Student.DistilBERT_AttrPromptTable13: 4,
             Student.BERT: 4,
             Student.DeBERTaV3Base: 8,
             Student.DeBERTaV3Large: 8,
@@ -264,6 +281,7 @@ class Student(AutoEnum):
             Student.TinyBert: 32,
             Student.MiniLM: 32,
             Student.DistilBERT: 8,
+            Student.DistilBERT_AttrPromptTable13: 8,
             Student.BERT: 8,
             Student.DeBERTaV3Base: 4,
             Student.DeBERTaV3Large: 4,
@@ -285,6 +303,8 @@ class Student(AutoEnum):
         return 1e-6  ## as per AttrPrompt codebase: https://github.com/yueyu1030/AttrPrompt/blob/3a05ffdcced6cacfd338e89ea8d0cd64ff449fa7/train_classifier/plm_model/main.py#L82
 
     def num_epochs(self) -> int:
+        if self == Student.DistilBERT_AttrPromptTable13:
+            return 5
         return 6  ## as per AttrPrompt paper
 
     def resources_per_model(self) -> Dict[str, int]:
@@ -292,6 +312,7 @@ class Student(AutoEnum):
             Student.TinyBert: dict(cpu=2, gpu=0.5),
             Student.MiniLM: dict(cpu=2, gpu=0.5),
             Student.DistilBERT: dict(cpu=2, gpu=1),
+            Student.DistilBERT_AttrPromptTable13: dict(cpu=2, gpu=1),
             Student.BERT: dict(cpu=2, gpu=1),
             Student.DeBERTaV3Base: dict(cpu=2, gpu=1),
             Student.DeBERTaV3Large: dict(cpu=2, gpu=1),
@@ -302,9 +323,11 @@ class DatasetName(AutoEnum):
     AgNews = alias('ag')
     HyperpartisanNews = alias('hyperpartisan')
     ToiHeadlines = alias('toi-head')
+    AmazonReviewsPolarity = alias('amazon-polarity')
     AmazonReviewsProductCategory = alias('amazon-reviews-category')
     AmazonHumorousProductQuestions = alias('amazon-humor')
-    AmazonReviewsPolarity = alias('amazon-polarity')
+    IMDb = alias('imdb-movie-reviews')
+    SST2 = alias('stanford-sentiment-treebank')
 
     def canonical(self) -> str:
         return {
@@ -314,6 +337,8 @@ class DatasetName(AutoEnum):
             DatasetName.AmazonReviewsPolarity: 'amazon_polarity',
             DatasetName.AmazonReviewsProductCategory: 'amazon_reviews_category',
             DatasetName.AmazonHumorousProductQuestions: 'amazon_humor',
+            DatasetName.IMDb: 'imdb',
+            DatasetName.SST2: 'sst2',
         }[self]
 
     def query_col(self) -> str:
@@ -327,6 +352,8 @@ class DatasetName(AutoEnum):
             DatasetName.AmazonReviewsPolarity: 'text',
             DatasetName.AmazonReviewsProductCategory: 'text',
             DatasetName.AmazonHumorousProductQuestions: 'text',
+            DatasetName.IMDb: 'text',
+            DatasetName.SST2: 'text',
         }[self]
 
     def label_col(self) -> str:
@@ -337,6 +364,8 @@ class DatasetName(AutoEnum):
             DatasetName.AmazonReviewsPolarity: 'label_text',
             DatasetName.AmazonReviewsProductCategory: 'label_text',
             DatasetName.AmazonHumorousProductQuestions: 'label_text',
+            DatasetName.IMDb: 'label_text',
+            DatasetName.SST2: 'label_text',
         }[self]
 
     def create_seed_set(
@@ -369,7 +398,7 @@ class DatasetName(AutoEnum):
                     f'by number of labels {len(label_verbalizer)}'
                 )
             seed_dataset_df: pd.DataFrame = pd.concat([
-                label_df.sample(n=lb_sample_size, random_state=seed)
+                label_df.sample(n=lb_sample_size, random_state=seed, replace=True)
                 for label_text, label_df in dataset_df.groupby(label_col)
                 if label_text in label_verbalizer
             ])
@@ -454,6 +483,8 @@ class DatasetName(AutoEnum):
             DatasetName.AmazonReviewsPolarity: 200,
             DatasetName.AmazonReviewsProductCategory: 400,
             DatasetName.AmazonHumorousProductQuestions: 50,
+            DatasetName.IMDb: 400,
+            DatasetName.SST2: 50,
         }[self]
 
     def seed_size(self) -> int:
@@ -465,6 +496,8 @@ class DatasetName(AutoEnum):
             DatasetName.AmazonReviewsPolarity: 2 * 100,
             DatasetName.AmazonReviewsProductCategory: 23 * 50,
             DatasetName.AmazonHumorousProductQuestions: 2 * 100,
+            DatasetName.IMDb: 2 * 100,
+            DatasetName.SST2: 2 * 100,
         }[self]
 
     def label_verbalizer(self) -> Dict[str, str]:
@@ -529,19 +562,40 @@ class DatasetName(AutoEnum):
                 'non_humorous': "solemn",
                 'humorous': "humorous",
             },
+
+            DatasetName.IMDb: {
+                'positive': "what the reviewer liked about the movie",
+                'negative': "what the reviewer disliked about the movie",
+            },
+
+            DatasetName.SST2: {
+                'positive': "what the reviewer liked about the movie",
+                'negative': "what the reviewer disliked about the movie",
+            },
         }[self]
 
     def icl_and_prompt_template(self, expt: Experiment, model_name: str) -> Dict[str, str]:
         if expt is Experiment.Gold:
             return {}
-        icl_and_prompt_template_dict: Dict[str, str] = ICL_AND_PROMPT_TEMPLATE_DICT[(self, expt)]
+        model_name: ModelName = ModelName(model_name)
+
+        icl_and_prompt_template_dict: Dict[str, Union[Dict, List[Tuple], str]] = ICL_AND_PROMPT_TEMPLATE_DICT[(self, expt)]
         assert 'icl_template' in icl_and_prompt_template_dict
         assert 'prompt_template' in icl_and_prompt_template_dict
         assert 'claude_replacements' in icl_and_prompt_template_dict
         icl_template: str = icl_and_prompt_template_dict['icl_template']
         prompt_template: str = icl_and_prompt_template_dict['prompt_template']
-        claude_replacements: str = icl_and_prompt_template_dict['claude_replacements']
-        if ModelName(model_name).is_claude():
+
+        chat_templates: Dict[str, str] = icl_and_prompt_template_dict['chat_templates']
+        chat_templates_chat_prompt_template: str = chat_templates['chat_prompt_template']
+        chat_templates_system_template: str = chat_templates['system_template']
+        chat_templates_icl_user_template: str = chat_templates['icl_user_template']
+        chat_templates_icl_assistant_template: str = chat_templates['icl_assistant_template']
+        chat_templates_user_template: str = chat_templates['user_template']
+
+        claude_replacements: List[Tuple[str, str]] = icl_and_prompt_template_dict['claude_replacements']
+
+        if model_name.is_claude():
             for repl in as_list(claude_replacements):
                 assert icl_template.find(repl[0]) >= 0
                 icl_template: str = icl_template.replace(
@@ -553,11 +607,61 @@ class DatasetName(AutoEnum):
                     repl[0],
                     repl[1],
                 )
-        assert '{{icl[example_text]}}' in icl_template
-        assert '{{icl_examples}}' in prompt_template
-        if expt is Experiment.SynthesizRR:
-            assert '{{icl[retrieved_context]}}' in icl_template
-            assert '{{retrieved_context}}' in prompt_template
+        elif model_name.is_hf() and model_name.use_chat_template():
+            tokenizer = model_name.tokenizer()
+            apply_chat_template_params: Dict = dict(
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+
+            ## Create icl_template:
+            icl_template_chat_messages: List[Dict] = []
+            if chat_templates_system_template.strip() != '' and None is not None:
+                icl_template_chat_messages.append({
+                    "role": None,
+                    "content": chat_templates_system_template,
+                })
+            icl_template_chat_messages.append({
+                "role": 'user',
+                "content": chat_templates_icl_user_template,
+            })
+            icl_template_chat_messages.append({
+                "role": 'assistant',
+                "content": chat_templates_icl_assistant_template,
+            })
+            icl_template: str = tokenizer.apply_chat_template(
+                icl_template_chat_messages,
+                **apply_chat_template_params,
+            )
+
+            ## Create prompt_template:
+            user_prompt_template_chat_messages: List[Dict] = []
+            if chat_templates_system_template.strip() != '' and None is not None:
+                user_prompt_template_chat_messages.append({
+                    "role": None,
+                    "content": chat_templates_system_template,
+                })
+            user_prompt_template_chat_messages.append({
+                "role": 'user',
+                "content": chat_templates_user_template,
+            })
+            user_prompt_template: str = tokenizer.apply_chat_template(
+                user_prompt_template_chat_messages,
+                **apply_chat_template_params,
+            )
+
+            prompt_template: str = chat_templates_chat_prompt_template.format(**{
+                'user_prompt_template': user_prompt_template,
+            })
+
+        assert ICL_EXAMPLE_TEXT_TEMPL in icl_template
+        assert ICL_EXAMPLES_META_TEMPL in prompt_template
+        if expt is Experiment.FewGen:
+            assert ICL_RETRIEVED_CONTEXT_TEMPL not in icl_template
+            assert RETRIEVED_CONTEXT_TEMPL not in prompt_template
+        elif expt is Experiment.SynthesizRR:
+            assert ICL_RETRIEVED_CONTEXT_TEMPL in icl_template
+            assert RETRIEVED_CONTEXT_TEMPL in prompt_template
         return dict(
             icl_template=icl_template,
             prompt_template=prompt_template,
@@ -584,6 +688,24 @@ News Article: """.strip() + '\n',
             ('Write a single news article', 'Human: Write a single news article'),
             ('News Article:', 'News Article by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a single news article {label_verbalization}. The written article should be 2 to 3 paragraphs long.
+            """.strip(),
+            icl_assistant_template="""
+News Article:
+{{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a single news article {label_verbalization}. The written article should be 2 to 3 paragraphs long.
+            """.strip(),
+        ),
     ),
 
     (DatasetName.HyperpartisanNews, Experiment.SynthesizRR): dict(
@@ -606,6 +728,30 @@ Rewritten Article: """.strip() + '\n',
             ('News Article:', 'Human: News Article:'),
             ('Rewritten Article:', 'Rewritten Article by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+News Article:
+{{icl[retrieved_context]}}
+
+Rewrite the above news article {label_verbalization}. The rewritten article should be 2 to 3 paragraphs long.
+            """.strip(),
+            icl_assistant_template="""
+Rewritten Article: 
+{{icl[example_text]}}
+            """.strip(),
+            user_template="""
+News Article:
+{{retrieved_context}}
+
+Rewrite the above news article {label_verbalization}. The rewritten article should be 2 to 3 paragraphs long.
+            """.strip(),
+        ),
     ),
 
     ##    _    ___   _  _
@@ -626,6 +772,23 @@ Summary: """.strip() + ' ',
             ('Write a summary for a news article', 'Human: Write a summary for a news article'),
             ('Summary:', 'Summary by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a summary for a news article {label_verbalization}. The summary should be one or two short sentences.
+            """.strip(),
+            icl_assistant_template="""
+Summary: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a summary for a news article {label_verbalization}. The summary should be one or two short sentences.
+            """.strip(),
+        ),
     ),
 
     (DatasetName.AgNews, Experiment.SynthesizRR): dict(
@@ -647,6 +810,29 @@ Summary: """.strip() + ' ',
             ('News Article:', 'Human: News Article:'),
             ('Summary:', 'Summary by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+News Article:
+{{icl[retrieved_context]}}
+
+Write a summary for the above news article {label_verbalization}. The summary should be one or two short sentences.
+            """.strip(),
+            icl_assistant_template="""
+Summary: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+News Article:
+{{retrieved_context}}
+
+Write a summary for the above news article {label_verbalization}. The summary should be one or two short sentences.
+            """.strip(),
+        ),
     ),
 
     ##  _____      ___   _  _                _  _  _
@@ -667,6 +853,23 @@ Headline: """.strip() + ' ',
             ('Write a headline for a news article', 'Human: Write a headline for a news article'),
             ('Headline:', 'Headline by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a headline for a news article about {label_verbalization}. The headline should be a single sentence.
+            """.strip(),
+            icl_assistant_template="""
+Headline: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a headline for a news article about {label_verbalization}. The headline should be a single sentence.
+            """.strip(),
+        ),
     ),
     (DatasetName.ToiHeadlines, Experiment.SynthesizRR): dict(
         icl_template="""
@@ -687,6 +890,29 @@ Headline: """.strip() + ' ',
             ('News Article:', 'Human: News Article:'),
             ('Headline:', 'Headline by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+News Article:
+{{icl[retrieved_context]}}
+
+Write a headline for the above news article about {label_verbalization}. The headline should be a single sentence.
+            """.strip(),
+            icl_assistant_template="""
+Headline: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+News Article:
+{{retrieved_context}}
+
+Write a headline for the above news article about {label_verbalization}. The headline should be a single sentence.
+            """.strip(),
+        ),
     ),
 
     ##  ___       _             _  _
@@ -708,6 +934,23 @@ Review: """.strip() + ' ',
              'Human: Write a review about a product on Amazon which discusses'),
             ('Review:', 'Review by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a review about a product on Amazon which discusses {label_verbalization}. Include relevant product details. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a review about a product on Amazon which discusses {label_verbalization}. Include relevant product details. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
     ),
 
     (DatasetName.AmazonReviewsPolarity, Experiment.SynthesizRR): dict(
@@ -730,6 +973,29 @@ Review: """.strip() + ' ',
              'Human: Product details:'),
             ('Review:', 'Review by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Product details:
+{{icl[retrieved_context]}}
+
+Write a review about the above product on Amazon which discusses {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Product details:
+{{retrieved_context}}
+
+Write a review about the above product on Amazon which discusses {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
     ),
 
     ##   ___        _
@@ -751,6 +1017,23 @@ Review: """.strip() + ' ',
              'Human: Write a product review about a product which is in the category of'),
             ('Review:', 'Review by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a product review about a product which is in the category of {label_verbalization}. Include relevant product details. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a product review about a product which is in the category of {label_verbalization}. Include relevant product details. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
     ),
     (DatasetName.AmazonReviewsProductCategory, Experiment.SynthesizRR): dict(
         icl_template="""
@@ -772,6 +1055,29 @@ Review: """.strip() + ' ',
              'Human: Product details:'),
             ('Review:', 'Review by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Product details:
+{{icl[retrieved_context]}}
+
+Write a product review about the above product which is in the category of {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Product details:
+{{retrieved_context}}
+
+Write a product review about the above product which is in the category of {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
     ),
 
     ##  _  _
@@ -792,6 +1098,23 @@ Product Question: """.strip() + ' ',
              'Human: Write a short'),
             ('Product Question:', 'Product Question by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a short {label_verbalization} question about a product on Amazon. Only include the question.
+            """.strip(),
+            icl_assistant_template="""
+Product Question: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a short {label_verbalization} question about a product on Amazon. Only include the question.
+            """.strip(),
+        ),
     ),
 
     (DatasetName.AmazonHumorousProductQuestions, Experiment.SynthesizRR): dict(
@@ -814,6 +1137,193 @@ Product Question: """.strip() + ' ',
              'Human: Product details:'),
             ('Product Question:', 'Product Question by Assistant:'),
         ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Product details:
+{{icl[retrieved_context]}}
+
+Write a short {label_verbalization} question about the above product on Amazon. Only include the question.
+            """.strip(),
+            icl_assistant_template="""
+Product Question: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Product details:
+{{retrieved_context}}
+
+Write a short {label_verbalization} question about the above product on Amazon. Only include the question.
+            """.strip(),
+        ),
+    ),
+
+    ##  ___  __  __  ___   _
+    ## |_ _||  \/  ||   \ | |__
+    ##  | | | |\/| || |) || '_ \
+    ## |___||_|  |_||___/ |_.__/
+    (DatasetName.IMDb, Experiment.FewGen): dict(
+        icl_template="""
+Write a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+Review: {{icl[example_text]}}""".strip() + ' ',
+        prompt_template="""
+{{icl_examples}}
+
+Write a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+Review: """.strip() + ' ',
+        claude_replacements=[
+            ('Write a review which discusses',
+             'Human: Write a review which discusses'),
+            ('Review:', 'Review by Assistant:'),
+        ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
+    ),
+
+    (DatasetName.IMDb, Experiment.SynthesizRR): dict(
+        icl_template="""
+Movie details:
+{{icl[retrieved_context]}}
+
+Write a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+Review: {{icl[example_text]}}""".strip() + ' ',
+        prompt_template="""
+{{icl_examples}}
+
+Movie details:
+{{retrieved_context}}
+
+Write a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+Review: """.strip() + ' ',
+        claude_replacements=[
+            ('Movie details:',
+             'Human: Movie details:'),
+            ('Review:', 'Review by Assistant:'),
+        ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Movie details:
+{{icl[retrieved_context]}}
+
+Write a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Movie details:
+{{retrieved_context}}
+
+Write a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
+            """.strip(),
+        ),
+    ),
+
+    ##  ___  ___  _____     ___
+    ## / __|/ __||_   _|___|_  )
+    ## \__ \\__ \  | | |___|/ /
+    ## |___/|___/  |_|     /___|
+    (DatasetName.SST2, Experiment.FewGen): dict(
+        icl_template="""
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence. Add very minor typos.
+Review: {{icl[example_text]}}""".strip() + ' ',
+        prompt_template="""
+{{icl_examples}}
+
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence. Add very minor typos.
+Review: """.strip() + ' ',
+        claude_replacements=[
+            ('Write a single sentence from a review which discusses',
+             'Human: Write a single sentence from a review which discusses'),
+            ('Review:', 'Review by Assistant:'),
+        ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie. The review should only be a single short sentence. Add very minor typos.
+            """.strip(),
+        ),
+    ),
+
+    (DatasetName.SST2, Experiment.SynthesizRR): dict(
+        icl_template="""
+Movie details:
+{{icl[retrieved_context]}}
+
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence. Add very minor typos.
+Review: {{icl[example_text]}}""".strip() + ' ',
+        prompt_template="""
+{{icl_examples}}
+
+Movie details:
+{{retrieved_context}}
+
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence. Add very minor typos.
+Review: """.strip() + ' ',
+        claude_replacements=[
+            ('Movie details:',
+             'Human: Movie details:'),
+            ('Review:', 'Review by Assistant:'),
+        ],
+        chat_templates=dict(
+            chat_prompt_template="""
+{{{{icl_examples}}}}
+
+{user_prompt_template}
+            """.strip(),
+            system_template='',
+            icl_user_template="""
+Movie details:
+{{icl[retrieved_context]}}
+
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence. Add very minor typos.
+            """.strip(),
+            icl_assistant_template="""
+Review: {{icl[example_text]}}
+            """.strip(),
+            user_template="""
+Movie details:
+{{retrieved_context}}
+
+Write a single sentence from a review which discusses {label_verbalization}. Include relevant details about the movie which are mentioned above. The review should only be a single short sentence. Add very minor typos.
+            """.strip(),
+        ),
     ),
 }
 
@@ -824,6 +1334,7 @@ class Corpus(AutoEnum):
     RealNews_Regional = alias('realnews-regional', 'realnews-regional-only')
     RealNews_Dominant = auto()
     AmazonProducts = alias('products')
+    CMU_Movies = alias('cmu-movie-summary')
 
     def canonical(self) -> str:
         return {
@@ -832,6 +1343,7 @@ class Corpus(AutoEnum):
             Corpus.RealNews_Regional: 'realnews_regional',
             Corpus.RealNews_Dominant: 'realnews_dominant',
             Corpus.AmazonProducts: 'amazon_products',
+            Corpus.CMU_Movies: 'cmu_movie_summary',
         }[self]
 
     def context_col(self) -> str:
@@ -841,6 +1353,7 @@ class Corpus(AutoEnum):
             Corpus.RealNews_Regional: 'text',
             Corpus.RealNews_Dominant: 'text',
             Corpus.AmazonProducts: 'product_text',
+            Corpus.CMU_Movies: 'text',
         }[self]
 
     def context_token_range(self) -> Tuple[int, int]:
@@ -850,6 +1363,25 @@ class Corpus(AutoEnum):
             Corpus.RealNews_Regional: (20, 400),
             Corpus.RealNews_Dominant: (20, 400),
             Corpus.AmazonProducts: (20, 400),
+            Corpus.CMU_Movies: (20, 400),
+        }[self]
+
+    def num_shards(self) -> int:
+        return {
+            Corpus.RealNews_India: 16,
+            Corpus.RealNews_Regional: 16,
+            Corpus.RealNews_Dominant: 384,
+            Corpus.AmazonProducts: 202,
+            Corpus.CMU_Movies: 8,
+        }[self]
+
+    def shard_num_cpus(self) -> int:
+        return {
+            Corpus.RealNews_India: 6,
+            Corpus.RealNews_Regional: 6,
+            Corpus.RealNews_Dominant: 2,
+            Corpus.AmazonProducts: 2,
+            Corpus.CMU_Movies: 6,
         }[self]
 
     def synthesizrr_top_k_range(self) -> range:
@@ -859,6 +1391,7 @@ class Corpus(AutoEnum):
             Corpus.RealNews_Regional: irange(1, 50, 1),
             Corpus.RealNews_Dominant: irange(1, 50, 1),
             Corpus.AmazonProducts: irange(1, 50, 1),
+            Corpus.CMU_Movies: irange(1, 50, 1),
         }[self]
 
     def _raw_text_path(self) -> str:
@@ -868,6 +1401,7 @@ class Corpus(AutoEnum):
             Corpus.RealNews_Regional: f'{CORPUS_DIR}/data/realnews/realnews-regional/',
             Corpus.RealNews_Dominant: f'{CORPUS_DIR}/data/realnews/realnews-dominant/',
             Corpus.AmazonProducts: f'{CORPUS_DIR}/data/amazon-reviews/2018/meta/raw-text/',
+            Corpus.CMU_Movies: f'{CORPUS_DIR}/data/cmu-movie-summary/raw-text/',
         }[self]
 
     def raw_text_dir(self) -> FileMetadata:
@@ -952,86 +1486,220 @@ class Corpus(AutoEnum):
                 file_format='parquet',
                 file_glob='*.parquet',
             ),
+            Corpus.CMU_Movies: FileMetadata.of(
+                self._raw_text_path(),
+                data_schema={
+                    'idx': 'index',
+                    'freebase_movie_id': 'object',
+                    'title': 'object',
+                    'text': 'text',
+                    'release_date': 'object',
+                    'box_office_revenue': 'object',
+                    'runtime': 'object',
+                    'languages': 'object',
+                    'countries': 'object',
+                    'genres': 'object',
+                },
+                file_format='parquet',
+                file_glob='*.parquet',
+            ),
         }[self]
 
 
 class ModelName(AutoEnum):
+    LLaMa_2_7B = auto()
+    LLaMa_2_7B_Chat = auto()
     LLaMa_2_13B = auto()
     LLaMa_2_13B_Chat = auto()
     ChatGPT = alias('gpt-3.5-turbo')
+    GPT_4 = auto()
     Claude_Instant_v1 = auto()
+    Claude_v2 = auto()
+    Phi_2 = auto()
+    Phi_3_mini = auto()
+    Qwen_1_8B_Chat = auto()
+    Mistral_7B_Instruct = auto()
+    Mixtral_8x7B_Instruct = auto()
 
     def canonical(self) -> str:
         return {
+            ModelName.LLaMa_2_7B: 'Llama-2-7B',
+            ModelName.LLaMa_2_7B_Chat: 'Llama-2-7B-Chat',
             ModelName.LLaMa_2_13B: 'Llama-2-13B',
             ModelName.LLaMa_2_13B_Chat: 'Llama-2-13B-Chat',
             ModelName.ChatGPT: 'gpt3.5turbo',
-            ModelName.Claude_Instant_v1: 'claude-instant-v1',  # 'anthropic.claude-instant-v1',
+            ModelName.GPT_4: 'gpt-4',
+            ModelName.Claude_Instant_v1: 'claude-instant-v1',
+            ModelName.Claude_v2: 'claude-v2',
+            ModelName.Qwen_1_8B_Chat: 'Qwen-1.8B-Chat',
+            ModelName.Phi_2: 'phi-2',
+            ModelName.Phi_3_mini: 'phi-3-mini-4k-instruct',
+            ModelName.Mistral_7B_Instruct: 'mistral-7b-instruct-v0.2',
+            ModelName.Mixtral_8x7B_Instruct: 'mixtral-8x7b-instruct-v0.1',
         }[self]
 
     def is_hf(self) -> bool:
         return self in {
+            ModelName.LLaMa_2_7B,
+            ModelName.LLaMa_2_7B_Chat,
             ModelName.LLaMa_2_13B,
             ModelName.LLaMa_2_13B_Chat,
+            ModelName.Phi_2,
+            ModelName.Phi_3_mini,
+            ModelName.Qwen_1_8B_Chat,
+            ModelName.Mistral_7B_Instruct,
+            ModelName.Mixtral_8x7B_Instruct,
         }
 
     def is_claude(self) -> bool:
         return self in {
             ModelName.Claude_Instant_v1,
+            ModelName.Claude_v2,
+        }
+
+    def is_openai(self) -> bool:
+        return self in {
+            ModelName.ChatGPT,
+            ModelName.GPT_4,
         }
 
     def model_name(self) -> str:
         return {
+            ModelName.LLaMa_2_7B: 'TheBloke/Llama-2-7B-fp16',
+            ModelName.LLaMa_2_7B_Chat: 'TheBloke/Llama-2-7B-Chat-fp16',
             ModelName.LLaMa_2_13B: 'TheBloke/Llama-2-13B-fp16',
             ModelName.LLaMa_2_13B_Chat: 'TheBloke/Llama-2-13B-Chat-fp16',
             ModelName.ChatGPT: 'gpt-3.5-turbo-1106',
+            ModelName.GPT_4: 'gpt-4-0613',
+            ModelName.Qwen_1_8B_Chat: 'Qwen/Qwen-1_8B-Chat',
             ModelName.Claude_Instant_v1: 'anthropic.claude-instant-v1',
+            ModelName.Claude_v2: 'anthropic.claude-v2',
+            ModelName.Phi_2: 'microsoft/phi-2',
+            ModelName.Phi_3_mini: 'microsoft/Phi-3-mini-4k-instruct',
+            ModelName.Mistral_7B_Instruct: 'mistralai/Mistral-7B-Instruct-v0.2',
+            ModelName.Mixtral_8x7B_Instruct: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
         }[self]
 
     def algorithm_name(self) -> str:
         return {
+            ModelName.LLaMa_2_7B: 'huggingface-CausalLM',
+            ModelName.LLaMa_2_7B_Chat: 'huggingface-CausalLM',
             ModelName.LLaMa_2_13B: 'huggingface-CausalLM',
             ModelName.LLaMa_2_13B_Chat: 'huggingface-CausalLM',
+            ModelName.Phi_2: 'huggingface-CausalLM',
+            ModelName.Phi_3_mini: 'huggingface-CausalLM',
+            ModelName.Mistral_7B_Instruct: 'huggingface-CausalLM',
+            ModelName.Mixtral_8x7B_Instruct: 'huggingface-CausalLM',
+            ModelName.Qwen_1_8B_Chat: 'huggingface-CausalLM',
             ModelName.ChatGPT: 'langchain',
+            ModelName.GPT_4: 'langchain',
             ModelName.Claude_Instant_v1: 'bedrock',
+            ModelName.Claude_v2: 'bedrock',
+        }[self]
+
+    def nested_evaluator(self) -> Optional[str]:
+        if not self.is_hf():
+            return None
+
+        return {
+            ModelName.LLaMa_2_7B: 'accelerate',
+            ModelName.LLaMa_2_7B_Chat: 'accelerate',
+            ModelName.LLaMa_2_13B: 'accelerate',
+            ModelName.LLaMa_2_13B_Chat: 'local',
+            ModelName.Mistral_7B_Instruct: 'local',
+            ModelName.Mixtral_8x7B_Instruct: 'local',
+            ModelName.Phi_2: 'local',
+            ModelName.Phi_3_mini: 'local',
+            ModelName.Qwen_1_8B_Chat: 'local',
+        }[self]
+
+    def nested_evaluator_use_hf_from_pretrained(self) -> bool:
+        if not self.is_hf():
+            return False
+        return {
+            ModelName.LLaMa_2_7B: False,
+            ModelName.LLaMa_2_7B_Chat: False,
+            ModelName.LLaMa_2_13B: False,
+            ModelName.LLaMa_2_13B_Chat: False,
+            ModelName.Mistral_7B_Instruct: False,
+            ModelName.Mixtral_8x7B_Instruct: False,
+            ModelName.Phi_2: False,
+            ModelName.Phi_3_mini: False,
+            ModelName.Qwen_1_8B_Chat: False,
         }[self]
 
     def model_weights_dtype(self) -> Optional[str]:
         return {
+            ModelName.LLaMa_2_7B: 'float16',
+            ModelName.LLaMa_2_7B_Chat: 'float16',
             ModelName.LLaMa_2_13B: 'float16',
             ModelName.LLaMa_2_13B_Chat: 'float16',
+            ModelName.Phi_2: 'float16',
+            ModelName.Phi_3_mini: 'float16',
+            ModelName.Qwen_1_8B_Chat: 'float16',
+            ModelName.Mistral_7B_Instruct: 'bfloat16',
+            ModelName.Mixtral_8x7B_Instruct: 'float16',
         }[self]
 
     def max_input_length(self) -> int:
         return {
+            ModelName.LLaMa_2_7B: 4000,
+            ModelName.LLaMa_2_7B_Chat: 4000,
             ModelName.LLaMa_2_13B: 4000,
             ModelName.LLaMa_2_13B_Chat: 4000,
+            ModelName.Qwen_1_8B_Chat: 8000,
+            ModelName.Phi_2: 2040,
+            ModelName.Phi_3_mini: 4000,
+            ModelName.Mistral_7B_Instruct: 32_000,
+            ModelName.Mixtral_8x7B_Instruct: 32_000,
         }[self]
 
     def llm_resources_per_model(self) -> Dict[str, int]:
         return {
+            ModelName.LLaMa_2_7B: dict(cpu=2, gpu=2),
+            ModelName.LLaMa_2_7B_Chat: dict(cpu=2, gpu=2),
             ModelName.LLaMa_2_13B: dict(cpu=2, gpu=2),
             ModelName.LLaMa_2_13B_Chat: dict(cpu=2, gpu=2),
+            ModelName.Phi_2: dict(cpu=2, gpu=1),
+            ModelName.Phi_3_mini: dict(cpu=2, gpu=1),
+            ModelName.Qwen_1_8B_Chat: dict(cpu=2, gpu=1),
             ModelName.Claude_Instant_v1: dict(cpu=1),
+            ModelName.Claude_v2: dict(cpu=1),
             ModelName.ChatGPT: dict(cpu=1),
+            ModelName.GPT_4: dict(cpu=1),
+            ModelName.Mistral_7B_Instruct: dict(cpu=2, gpu=1),
+            ModelName.Mixtral_8x7B_Instruct: dict(cpu=4, gpu=4),
         }[self]
 
     def llm_batch_size(self, *, dataset_name: DatasetName, expt: Experiment) -> int:
         llm_batch_sizes_dict: Dict = {
             ModelName.Claude_Instant_v1: 3,
+            ModelName.Claude_v2: 3,
             ModelName.ChatGPT: 3,
+            ModelName.GPT_4: 3,
+            ModelName.Qwen_1_8B_Chat: 3,
+            ModelName.Phi_2: 3,
+            ModelName.Phi_3_mini: 3,
+
+            ModelName.LLaMa_2_7B: 1,
+            ModelName.LLaMa_2_7B_Chat: 1,
 
             ModelName.LLaMa_2_13B: 1,
             (ModelName.LLaMa_2_13B, DatasetName.AmazonHumorousProductQuestions): 3,
             (ModelName.LLaMa_2_13B, DatasetName.AmazonReviewsPolarity): 3,
+            (ModelName.LLaMa_2_13B, DatasetName.IMDb): 2,
             (ModelName.LLaMa_2_13B, DatasetName.AgNews): 2,
             (ModelName.LLaMa_2_13B, DatasetName.ToiHeadlines): 2,
 
             ModelName.LLaMa_2_13B_Chat: 1,
             (ModelName.LLaMa_2_13B_Chat, DatasetName.AmazonHumorousProductQuestions): 3,
             (ModelName.LLaMa_2_13B_Chat, DatasetName.AmazonReviewsPolarity): 3,
+            (ModelName.LLaMa_2_13B_Chat, DatasetName.IMDb): 2,
             (ModelName.LLaMa_2_13B_Chat, DatasetName.AgNews): 2,
             (ModelName.LLaMa_2_13B, DatasetName.ToiHeadlines): 2,
+
+            ModelName.Mistral_7B_Instruct: 1,
+            ModelName.Mixtral_8x7B_Instruct: 1,
         }
         return get_default(
             llm_batch_sizes_dict.get((self, dataset_name, expt)),
@@ -1041,27 +1709,115 @@ class ModelName(AutoEnum):
 
     def pad_token(self) -> str:
         return {
+            ModelName.LLaMa_2_7B: '[PAD]',
+            ModelName.LLaMa_2_7B_Chat: '[PAD]',
             ModelName.LLaMa_2_13B: '[PAD]',
             ModelName.LLaMa_2_13B_Chat: '[PAD]',
+            ModelName.Qwen_1_8B_Chat: '[PAD]',
+            ModelName.Phi_2: None,
+            ModelName.Phi_3_mini: '<|endoftext|>',
+            ModelName.Mistral_7B_Instruct: '</s>',
+            ModelName.Mixtral_8x7B_Instruct: '</s>',
         }[self]
 
-    def api_key(self) -> str:
+    def api_key(self) -> Optional[str]:
         return {
             ModelName.ChatGPT: 'sk-examplekeyabcd',
+            ModelName.GPT_4: 'sk-examplekeyabcd',
+            ModelName.Mistral_7B_Instruct: 'hf_examplekeyabcd',
+            ModelName.Mixtral_8x7B_Instruct: 'hf_examplekeyabcd',
+        }.get(self)
+
+    def input_price_per_1M_tokens(self) -> float:
+        ## Price in USD:
+        return {
+            ## https://aws.amazon.com/bedrock/pricing/
+            self.LLaMa_2_13B_Chat: 0.00075 * 1e3,
+            self.Claude_Instant_v1: 0.00080 * 1e3,
+            self.Claude_v2: 0.00800 * 1e3,
+            ## https://openai.com/pricing
+            self.ChatGPT: 0.50,
+            self.GPT_4: 30.00,
+            self.Mistral_7B_Instruct: 0.00015 * 1e3,
+            self.Mixtral_8x7B_Instruct: 0.00045 * 1e3,
+        }.get(self, 0.0)
+
+    def output_price_per_1M_tokens(self) -> float:
+        ## Price in USD:
+        return {
+            ## https://aws.amazon.com/bedrock/pricing/
+            self.LLaMa_2_13B_Chat: 0.00100 * 1e3,
+            self.Claude_Instant_v1: 0.00240 * 1e3,
+            self.Claude_v2: 0.02400 * 1e3,
+            ## https://openai.com/pricing
+            self.ChatGPT: 1.50,
+            self.GPT_4: 60.00,
+            self.Mistral_7B_Instruct: 0.00020 * 1e3,
+            self.Mixtral_8x7B_Instruct: 0.0007 * 1e3,
+        }.get(self, 0.0)
+
+    def use_chat_template(self) -> bool:
+        if not self.is_hf():
+            return False
+        return {
+            ModelName.LLaMa_2_7B: False,
+            ModelName.LLaMa_2_7B_Chat: False,
+            ModelName.LLaMa_2_13B: False,
+            ModelName.LLaMa_2_13B_Chat: False,
+            ModelName.Qwen_1_8B_Chat: False,
+            ModelName.Phi_2: False,
+            ModelName.Phi_3_mini: True,
+            ModelName.Mistral_7B_Instruct: True,
+            ModelName.Mixtral_8x7B_Instruct: True,
+        }[self]
+
+    def system_role(self) -> Optional[str]:
+        if not self.use_chat_template():
+            return None
+        return {
+            ModelName.Phi_3_mini: None,
+            ModelName.Mistral_7B_Instruct: None,
+            ModelName.Mixtral_8x7B_Instruct: None,
+        }[self]
+
+    def user_role(self) -> Optional[str]:
+        if not self.use_chat_template():
+            return None
+        return {
+            ModelName.Phi_3_mini: 'user',
+            ModelName.Mistral_7B_Instruct: 'user',
+            ModelName.Mixtral_8x7B_Instruct: 'user',
+        }[self]
+
+    def assistant_role(self) -> Optional[str]:
+        if not self.use_chat_template():
+            return None
+        return {
+            ModelName.Phi_3_mini: 'assistant',
+            ModelName.Mistral_7B_Instruct: 'assistant',
+            ModelName.Mixtral_8x7B_Instruct: 'assistant',
         }[self]
 
     def tokenizer(self) -> Any:
         if not hasattr(self, '_tokenizer'):
             if self.is_hf():
                 from transformers import AutoTokenizer
-                tokenizer = AutoTokenizer.from_pretrained(self.model_name())
+                tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_name(),
+                    pad_token=self.pad_token(),
+                    padding_side='left',
+                    truncation_side='left',
+                    token=self.api_key(),
+                )
             elif self is ModelName.ChatGPT:
                 import tiktoken
                 tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+            elif self is ModelName.GPT_4:
+                import tiktoken
+                tokenizer = tiktoken.encoding_for_model("gpt-4")
             elif self.is_claude():
                 from transformers import PreTrainedTokenizerFast
                 tokenizer = PreTrainedTokenizerFast(
-                    ## TODO: change this to use anthropic's Python library
                     tokenizer_file=FileSystemUtil.expand_dir("~/claude/claude-v1-tokenization.json")
                 )
             else:
@@ -1082,6 +1838,14 @@ class Retriever(AutoEnum):
             Retriever.MiniLM: 'all_minilm_l6_v2',
             Retriever.BM25Okapi: 'bm25_okapi',
             Retriever.Random: 'random',
+        }[self]
+
+    def batch_size(self) -> int:
+        return {
+            Retriever.Contriever: 16,
+            Retriever.MiniLM: 16,
+            Retriever.BM25Okapi: 16,
+            Retriever.Random: 16,
         }[self]
 
     def is_dense(self):
@@ -1146,6 +1910,7 @@ def shorten(
 @ray.remote
 class ShortenActor:
     def __init__(self, model_name: ModelName):
+        import tiktoken, transformers
         self.tokenizer = model_name.tokenizer()
 
     def shorten(self, text: str, **kwargs) -> str:
@@ -1188,18 +1953,32 @@ def shorten_batch(
         del actors
 
 
+def tokenize_batch(texts: List[str], *, model_name) -> List[List[int]]:
+    tokenizer = model_name.tokenizer()
+    import tiktoken, transformers
+    if isinstance(tokenizer, tiktoken.core.Encoding):
+        return [list(tokenizer.encode(text)) for text in texts]
+    elif isinstance(tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase):
+        return [list(tokenizer.encode(text, add_special_tokens=False)) for text in texts]
+    else:
+        raise NotImplementedError(f'Unrecognized type for tokenizer: {type_str(tokenizer)}')
+
+
 class MetricName(AutoEnum):
     NoMetric = auto()
     RowCount = auto()
     TextLength = auto()
     EntityCount = auto()
     SelfBLEU = auto()
+    LabelwiseCosineSimilarity = auto()
+    PairwiseCosineSimilarity = auto()
     Mauve = auto()
     LabelPreservation = auto()
     StudentDatasetCartography = auto()
     StudentTinyBert = alias('student-huawei-noah/TinyBERT_General_4L_312D')
     StudentMiniLM = alias('student-all-MiniLM-L6-v2', 'student-sentence-transformers/all-MiniLM-L6-v2')
     StudentDistilBERT = alias('student-distilbert-base-uncased')
+    StudentDistilBERT_AttrPromptTable13 = alias('student-distilbert-base-uncased-attrprompt-table13')
     StudentBERT = alias('student-bert-base-uncased')
     StudentDeBERTaV3Base = alias('student-microsoft/deberta-v3-base')
     StudentDeBERTaV3Large = alias('student-microsoft/deberta-v3-large')
@@ -1207,6 +1986,7 @@ class MetricName(AutoEnum):
     StudentHPOTinyBert = alias('hpo-student-huawei-noah/TinyBERT_General_4L_312D')
     StudentHPOMiniLM = alias('hpo-student-all-MiniLM-L6-v2', 'hpo-student-sentence-transformers/all-MiniLM-L6-v2')
     StudentHPODistilBERT = alias('hpo-student-distilbert-base-uncased')
+    StudentHPODistilBERT_AttrPromptTable13 = alias('hpo-student-distilbert-base-uncased-attrprompt-table13')
     StudentHPOBERT = alias('hpo-student-bert-base-uncased')
     StudentHPODeBERTaV3Base = alias('hpo-student-microsoft/deberta-v3-base')
     StudentHPODeBERTaV3Large = alias('hpo-student-microsoft/deberta-v3-large')
@@ -1228,6 +2008,8 @@ class MetricName(AutoEnum):
             MetricName.TextLength: 'text_length',
             MetricName.EntityCount: 'entity_count',
             MetricName.SelfBLEU: 'self_bleu',
+            MetricName.LabelwiseCosineSimilarity: 'label_cosine_sim',
+            MetricName.PairwiseCosineSimilarity: 'pairwise_cosine_sim',
             MetricName.Mauve: 'mauve',
             MetricName.LabelPreservation: 'label_preservation',
             MetricName.StudentDatasetCartography: 'cartography',
@@ -1242,7 +2024,7 @@ class MetricName(AutoEnum):
     @classmethod
     def from_metric(cls, metric: Metric):
         from synthesizrr.base.metric.text_generation_metrics import TextGenerationStudent, \
-            TextLength, EntityCount, SelfBLEU, Mauve, LabelPreservation
+            TextLength, EntityCount, SelfBLEU, LabelwiseCosineSimilarity, PairwiseCosineSimilarity, Mauve, LabelPreservation
         from synthesizrr.base.framework.trainer import RowCount, SaveDatasetOrPredictions
         if isinstance(metric, TextGenerationStudent):
             return cls.from_student_metric(metric)
@@ -1254,6 +2036,10 @@ class MetricName(AutoEnum):
             return cls.EntityCount
         elif isinstance(metric, SelfBLEU):
             return cls.SelfBLEU
+        elif isinstance(metric, LabelwiseCosineSimilarity):
+            return cls.LabelwiseCosineSimilarity
+        elif isinstance(metric, PairwiseCosineSimilarity):
+            return cls.PairwiseCosineSimilarity
         elif isinstance(metric, Mauve):
             return cls.Mauve
         elif isinstance(metric, LabelPreservation):
@@ -1271,6 +2057,9 @@ class MetricName(AutoEnum):
             student: Student = Student(metric.params.hyperparams['base_model']['hyperparams']['model_name'])
         elif str_normalize(metric.params.algorithm) == str_normalize('huggingface-SequenceClassification'):
             student: Student = Student(metric.params.hyperparams['model_name'])
+            if student == Student.DistilBERT:
+                if metric.params.hyperparams['optimizer']['lr'] == 2e-5:
+                    student: Student = Student.DistilBERT_AttrPromptTable13
         else:
             raise not_impl('metric.params.algorithm', metric.params.algorithm)
         if metric.params.hpo:
@@ -1302,8 +2091,9 @@ class MetricName(AutoEnum):
             student_text_col: str,
             student_hpo_validation_set: Literal['seed', 'train_set', 'val_set'],
             entity_count_num_cpus: int = 16,
-            self_bleu_num_cpus: int = 24,
+            self_bleu_num_cpus: int = 36,
             mauve_num_cpus: int = 12,
+            label_cosine_sim_num_cpus: int = 8,
     ) -> Metric:
         if self.is_student():
             return self.get_student_metric(
@@ -1386,6 +2176,19 @@ class MetricName(AutoEnum):
                 num_cpus=self_bleu_num_cpus,
                 spacy_ner_model='en_core_web_lg',
                 max_retries=1,
+            )),
+            MetricName.LabelwiseCosineSimilarity: Metric.of('LabelwiseCosineSimilarity', params=dict(
+                label_col=label_col,
+                generations_col=GENERATED_TEXTS_COL,
+                num_cpus=label_cosine_sim_num_cpus,
+                hf_embedding_model_name='all-mpnet-base-v2',
+                max_retries=2,
+            )),
+            MetricName.PairwiseCosineSimilarity: Metric.of('PairwiseCosineSimilarity', params=dict(
+                generations_col=GENERATED_TEXTS_COL,
+                num_cpus=label_cosine_sim_num_cpus,
+                hf_embedding_model_name='all-mpnet-base-v2',
+                max_retries=2,
             )),
             MetricName.Mauve: Metric.of('Mauve', params=dict(
                 references_col=references_col,
@@ -1564,6 +2367,7 @@ class MetricName(AutoEnum):
             MetricName.StudentTinyBert,
             MetricName.StudentMiniLM,
             MetricName.StudentDistilBERT,
+            MetricName.StudentDistilBERT_AttrPromptTable13,
             MetricName.StudentBERT,
             MetricName.StudentDeBERTaV3Base,
             MetricName.StudentDeBERTaV3Large,
@@ -1578,6 +2382,7 @@ class MetricName(AutoEnum):
             MetricName.StudentHPOTinyBert,
             MetricName.StudentHPOMiniLM,
             MetricName.StudentHPODistilBERT,
+            MetricName.StudentHPODistilBERT_AttrPromptTable13,
             MetricName.StudentHPOBERT,
             MetricName.StudentHPODeBERTaV3Base,
             MetricName.StudentHPODeBERTaV3Large,
@@ -1617,6 +2422,7 @@ STUDENT_TO_METRIC_NAME_MAP: Dict[Student, MetricName] = {
     Student.TinyBert: MetricName.StudentTinyBert,
     Student.MiniLM: MetricName.StudentMiniLM,
     Student.DistilBERT: MetricName.StudentDistilBERT,
+    Student.DistilBERT_AttrPromptTable13: MetricName.StudentDistilBERT_AttrPromptTable13,
     Student.BERT: MetricName.StudentBERT,
     Student.DeBERTaV3Base: MetricName.StudentDeBERTaV3Base,
     Student.DeBERTaV3Large: MetricName.StudentDeBERTaV3Large,
@@ -1629,6 +2435,7 @@ STUDENT_HPO_TO_METRIC_NAME_MAP: Dict[Student, MetricName] = {
     Student.TinyBert: MetricName.StudentHPOTinyBert,
     Student.MiniLM: MetricName.StudentHPOMiniLM,
     Student.DistilBERT: MetricName.StudentHPODistilBERT,
+    Student.DistilBERT_AttrPromptTable13: MetricName.StudentHPODistilBERT_AttrPromptTable13,
     Student.BERT: MetricName.StudentHPOBERT,
     Student.DeBERTaV3Base: MetricName.StudentHPODeBERTaV3Base,
     Student.DeBERTaV3Large: MetricName.StudentHPODeBERTaV3Large,

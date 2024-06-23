@@ -39,7 +39,8 @@ from synthesizrr.expt.common import CachedResultsStep, IDX_COL, LABEL_TEXT_COL, 
     QUERY_TEXT_COL, RETRIEVED_TOP_K_COL, RETRIEVED_CONTEXT_COL, DISTANCE_COL, DISTANCE_METRIC_COL, \
     EFS_HUGGINGFACE_CACHE_DIR, DEFAULT_SEED_SET_DATA_SPLIT, DEFAULT_SEED, LABEL_OVERALL, TEXT_GEN_REFERENCES_COL, \
     expand_num_samples_per_label, DatasetName, Corpus, ModelName, Retriever, MetricName, Student, \
-    count_num_tokens, shorten, Experiment, get_templates_and_hashes, DatasetFilterParams, calc_label_dist
+    count_num_tokens, shorten, Experiment, get_templates_and_hashes, DatasetFilterParams, calc_label_dist, \
+    DEFAULT_TOP_P, DEFAULT_TEMPERATURE
 
 
 class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
@@ -947,6 +948,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             num_shots_list: List[conint(ge=0)],
             seed_set: ClassificationData,
             seed_type: Literal['generated', 'train_set'],
+            seed_generation_params_hash: Optional[str],
             icl_type: Literal['retrieved', 'curated', 'seed'],
             retr_icl_top_ks: List[conint(ge=1)],
             retr_icl_distance_range: Tuple[float, float],
@@ -959,7 +961,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             icl_template: Optional[constr(min_length=1)] = None,
             prompt_template: Optional[constr(min_length=1)] = None,
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
 
             filter_params: DatasetFilterParams = DatasetFilterParams(filter_type='none'),
 
@@ -1062,6 +1064,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                     label_verbalizer=label_verbalizer,
                     seed_set_data_split=seed_set_data_split,
                     seed_type=seed_type,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     icl_type=icl_type,
                     retr_icl_top_ks=retr_icl_top_ks,
                     retr_icl_distance_range=retr_icl_distance_range,
@@ -1069,6 +1072,8 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                     synthesizrr_top_k_range=synthesizrr_top_k_range,
                     synthesizrr_distance_range=synthesizrr_distance_range,
                     synthesizrr_max_tokens=synthesizrr_max_tokens,
+                    top_p=top_p,
+                    temperature=temperature,
                     icl_template_hash=icl_template_hash,
                     prompt_template_hash=prompt_template_hash,
                     num_samples_per_label=get_default(num_samples_per_label, {}).get(LABEL_OVERALL),
@@ -1104,6 +1109,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         label_verbalizer=label_verbalizer,
                         seed_set_data_split=seed_set_data_split,
                         seed_type=seed_type,
+                        seed_generation_params_hash=seed_generation_params_hash,
                         icl_type=icl_type,
                         retr_icl_top_ks=retr_icl_top_ks,
                         retr_icl_distance_range=retr_icl_distance_range,
@@ -1111,6 +1117,8 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         synthesizrr_top_k_range=synthesizrr_top_k_range,
                         synthesizrr_distance_range=synthesizrr_distance_range,
                         synthesizrr_max_tokens=synthesizrr_max_tokens,
+                        top_p=top_p,
+                        temperature=temperature,
                         icl_template_hash=icl_template_hash,
                         prompt_template_hash=prompt_template_hash,
                         num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
@@ -1191,6 +1199,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             label_verbalizer: Dict[str, str],
             seed_set_data_split: DataSplit,
             seed_type: Literal['generated', 'train_set'],
+            seed_generation_params_hash: Optional[str],
             icl_type: Literal['retrieved', 'curated', 'seed'],
             retr_icl_top_ks: List[conint(ge=1)],
             retr_icl_distance_range: Tuple[float, float],
@@ -1198,6 +1207,8 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             synthesizrr_top_k_range: range,
             synthesizrr_distance_range: Tuple[float, float],  ## (0.4, 0.9)
             synthesizrr_max_tokens: conint(ge=1),
+            top_p: confloat(ge=0.0, le=1.0),
+            temperature: confloat(ge=0.0, le=1e6),
             icl_template_hash: Optional[constr(min_length=6)],
             prompt_template_hash: Optional[constr(min_length=6)],
             num_samples_per_label: Optional[conint(ge=1)],
@@ -1214,7 +1225,8 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -1266,6 +1278,13 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             )
             filter_params_str: str = f'-f={filter_hash}'
 
+        top_p_str: str = ''
+        if top_p != DEFAULT_TOP_P:
+            top_p_str = f'-top_p={top_p:.2f}'
+        temperature_str: str = ''
+        if temperature != DEFAULT_TEMPERATURE:
+            temperature_str = f'-temp={temperature}'
+        
         student_hpo_validation_set_str: str = ''
         if metric_name.is_student_hpo():
             student_hpo_validation_set_str: str = f'-hpo_set={student_hpo_validation_set}'
@@ -1304,7 +1323,9 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                   f"{student_hpo_validation_set_str}" \
                   f"{dataset_cartography_str}" \
                   f"{text_gens_parser_str}" \
-                  f"{filter_params_str}"
+                  f"{filter_params_str}" \
+                  f"{top_p_str}" \
+                  f"{temperature_str}"
         if save_type == 'metrics':
             try:
                 return results_path.subdir_in_dir(f'label={label_text}', return_metadata=True) \
@@ -1369,13 +1390,14 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             num_shots_list: List[conint(ge=0)],
             seed_set: ClassificationData,
             seed_type: Literal['generated', 'train_set'],
+            seed_generation_params_hash: Optional[str],
             fewgen_max_tokens: conint(ge=1),
             num_samples_per_label: Union[Dict[str, conint(ge=1)], conint(ge=1)],
             label_verbalizer: Dict[str, str],
             icl_template: Optional[constr(min_length=1)] = None,
             prompt_template: Optional[constr(min_length=1)] = None,
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
 
             filter_params: DatasetFilterParams = DatasetFilterParams(filter_type='none'),
 
@@ -1467,7 +1489,10 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                     label_verbalizer=label_verbalizer,
                     seed_set_data_split=seed_set_data_split,
                     seed_type=seed_type,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     fewgen_max_tokens=fewgen_max_tokens,
+                    top_p=top_p,
+                    temperature=temperature,
                     icl_template_hash=icl_template_hash,
                     prompt_template_hash=prompt_template_hash,
                     num_samples_per_label=num_samples_per_label[LABEL_OVERALL],
@@ -1501,7 +1526,10 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                         label_verbalizer=label_verbalizer,
                         seed_set_data_split=seed_set_data_split,
                         seed_type=seed_type,
+                        seed_generation_params_hash=seed_generation_params_hash,
                         fewgen_max_tokens=fewgen_max_tokens,
+                        top_p=top_p,
+                        temperature=temperature,
                         icl_template_hash=icl_template_hash,
                         prompt_template_hash=prompt_template_hash,
                         num_samples_per_label=num_samples_per_label[label_text],
@@ -1580,7 +1608,10 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             label_verbalizer: Dict[str, str],
             seed_set_data_split: DataSplit,
             seed_type: Literal['generated', 'train_set'],
+            seed_generation_params_hash: Optional[str],
             fewgen_max_tokens: conint(ge=1),
+            top_p: confloat(ge=0.0, le=1.0),
+            temperature: confloat(ge=0.0, le=1e6),
             icl_template_hash: Optional[constr(min_length=6)],
             prompt_template_hash: Optional[constr(min_length=6)],
             num_samples_per_label: conint(ge=1),
@@ -1597,7 +1628,8 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -1639,6 +1671,13 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                 dataset_cartography_text_col=dataset_cartography_text_col,
             )
             filter_params_str: str = f'-f={filter_hash}'
+
+        top_p_str: str = ''
+        if top_p != DEFAULT_TOP_P:
+            top_p_str = f'-top_p={top_p:.2f}'
+        temperature_str: str = ''
+        if temperature != DEFAULT_TEMPERATURE:
+            temperature_str = f'-temp={temperature}'
 
         student_hpo_validation_set_str: str = ''
         if metric_name.is_student_hpo():
@@ -1682,6 +1721,8 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                 f"{dataset_cartography_str}"
                 f"{text_gens_parser_str}"
                 f"{filter_params_str}"
+                f"{top_p_str}"
+                f"{temperature_str}"
                 f".pkl",
                 return_metadata=True,
             ).update_params(file_format=FileFormat.PICKLE)
@@ -1702,6 +1743,8 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                 f"{student_hpo_validation_set_str}"
                 f"{dataset_cartography_str}"
                 f"{text_gens_parser_str}"
-                f"{filter_params_str}",
+                f"{filter_params_str}"
+                f"{top_p_str}"
+                f"{temperature_str}",
                 return_metadata=True,
             )

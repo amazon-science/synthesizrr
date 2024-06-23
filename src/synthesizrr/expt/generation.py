@@ -6,7 +6,7 @@ from synthesizrr.base.constants import FileFormat, DataLayout, MLType, DataSplit
 from synthesizrr.base.util import Registry, MutableParameters, Parameters, set_param_from_alias, is_list_like, as_list, \
     random_sample, safe_validate_arguments, get_default, StringUtil, MLTypeSchema, AutoEnum, auto, alias, Timer, \
     not_impl, check_isinstance, keep_keys, keep_values, FileSystemUtil, type_str, parameterized_flatten, \
-    punct_normalize, accumulate_iter
+    punct_normalize, accumulate_iter, any_item, ProgressBar, remove_nulls, only_item
 from synthesizrr.base.util.concurrency import run_asyncio, run_concurrent, run_parallel, run_parallel_ray, wait, wait_if_future, \
     accumulate, get_result, ThreadPoolExecutor, stop_executor, Future, dispatch_executor, dispatch
 from synthesizrr.base.data import FileMetadata, ScalableDataFrame, ScalableSeries, Reader, ScalableDataFrameOrRaw, to_sdf
@@ -19,9 +19,10 @@ from synthesizrr.base.framework.task.classification import ClassificationData
 from synthesizrr.base.framework.task.embedding import EmbeddingData, Embeddings
 from synthesizrr.base.framework.task.retrieval import Queries, RankedResults, RetrievalCorpus
 from synthesizrr.base.framework.task.text_generation import TextInputs, NextTokens, TextGenerations, FewShotTextGenerator, \
-    TextGenerationsPredictionsBase
+    TextGenerationsPredictionsBase, GENERATED_TEXTS_COL
+from synthesizrr.base.metric.text_generation_metrics import _text_gens_to_clf_dataset
 from synthesizrr.base.framework.evaluator import Evaluator, LoadBalancingStrategy
-from synthesizrr.base.framework.chain.Chain import Step, Chain
+from synthesizrr.base.framework.chain.Chain import Step, Chain, ChainExecution
 from functools import partial
 from pydantic import root_validator, Extra, conint, confloat, constr
 from pydantic.typing import Literal
@@ -31,7 +32,9 @@ from synthesizrr.expt.common import CachedResultsStep, IDX_COL, LABEL_TEXT_COL, 
     QUERY_TEXT_COL, RETRIEVED_TOP_K_COL, RETRIEVED_CONTEXT_COL, DISTANCE_COL, DISTANCE_METRIC_COL, \
     EFS_HUGGINGFACE_CACHE_DIR, DEFAULT_SEED_SET_DATA_SPLIT, DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH, \
     DEFAULT_SEED, Experiment, expand_num_samples_per_label, DatasetName, Corpus, ModelName, Retriever, \
-    count_num_tokens, shorten, get_templates_and_hashes, calc_label_dist
+    count_num_tokens, shorten, get_templates_and_hashes, calc_label_dist, \
+    DEFAULT_TOP_P, DEFAULT_TEMPERATURE, MetricName
+from transformers import TemperatureLogitsWarper, TopPLogitsWarper
 
 
 class EmbedCorpus(CachedResultsStep):
@@ -249,26 +252,31 @@ class CreateSeedSet(CachedResultsStep):
             seed_size: int,
             seed_set_data_split: DataSplit = DEFAULT_SEED_SET_DATA_SPLIT,
             seed_set_stratify_on_ground_truth: bool = DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH,
+            seed_generation_params: Optional[Dict] = None,
             seed: int = DEFAULT_SEED,
+            text_col: Optional[str] = None,
             label_col: Optional[str] = None,
             label_verbalizer: Dict[str, str],
             **kwargs,
     ) -> Dict:
+        text_col: str = get_default(text_col, dataset_name.text_col())
         label_col: str = get_default(label_col, dataset_name.label_col())
 
-        seed_set_file: FileMetadata = self.save_to(
-            results_dir=results_dir,
-            dataset_name=dataset_name,
-            seed_type=seed_type,
-            seed_size=seed_size,
-            seed_set_data_split=seed_set_data_split,
-            seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
-            seed=seed,
-        )
-        if not seed_set_file.exists():
-            self.info(f'Seed set does not exist at "{seed_set_file.path}", creating it...')
-            if seed_type == 'train_set':
-                seed_set: Dataset = dataset_name.create_seed_set(
+        seed_generation_params_hash: Optional[str] = None
+        if seed_type == 'train_set':
+            seed_set_file: FileMetadata = self.save_to(
+                results_dir=results_dir,
+                dataset_name=dataset_name,
+                seed_type=seed_type,
+                seed_size=seed_size,
+                seed_set_data_split=seed_set_data_split,
+                seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                seed_generation_params_hash=None,
+                seed=seed,
+            )
+            if not seed_set_file.exists():
+                self.info(f'Seed set does not exist at "{seed_set_file.path}", creating it...')
+                seed_set: ClassificationData = dataset_name.create_seed_set(
                     seed_size=seed_size,
                     data_split=seed_set_data_split,
                     seed=seed,
@@ -276,18 +284,79 @@ class CreateSeedSet(CachedResultsStep):
                     label_col=label_col,
                     label_verbalizer=label_verbalizer,
                 )
-            elif seed_type == 'generated':
-                ## TODO implement seed set generation.
-                raise not_impl('seed_type', seed_type)
-            else:
-                raise not_impl('seed_type', seed_type)
-            save_dataset(
-                dataset=seed_set,
-                dataset_destination=seed_set_file,
-                overwrite=True,
+                check_isinstance(seed_set, ClassificationData)
+                save_dataset(
+                    dataset=seed_set,
+                    dataset_destination=seed_set_file,
+                    overwrite=True,
+                )
+                self.info(f'...done creating seed set at "{seed_set_file.path}".')
+            seed_set: ClassificationData = load_dataset(seed_set_file, retry=10, retry_wait=10)
+        elif seed_type == 'generated':
+            if seed_generation_params is None:
+                raise ValueError(f'Must pass `seed_generation_params` when passing `seed_type` == "generated"')
+            if not isinstance(seed_generation_params, dict):
+                raise ValueError(f'Must pass `seed_generation_params` as a dict; found {type_str(seed_generation_params)}')
+            ## TODO: figure out a better way to do this.
+            from synthesizrr.expt.main import run_chain
+            num_shots_list: Optional[List[int]] = seed_generation_params.get('num_shots_list')
+            if not is_list_like(num_shots_list) or len(num_shots_list) != 1:
+                raise ValueError(f'Expected `num_shots_list` to be a list of exactly one element; found: {num_shots_list}')
+            num_shots: int = only_item(num_shots_list)
+            self.info(f'Running seed set generation...')
+            seed_generation_exn: ChainExecution = run_chain(**{
+                **seed_generation_params,
+                **dict(
+                    results_dir=results_dir.subdir_in_dir('generated-seed-set', return_metadata=True),
+                    metrics_to_evaluate=(
+                        MetricName.SaveFilteredDataset,
+                    ),
+                    background=False,
+                    notifier=None,
+                    tracker=None,
+                    verbosity={
+                        0: 0,
+                        1: 0,
+                        2: 1,
+                        3: 3,
+                    }.get(self.verbosity, 3),
+                ),
+            })
+            if seed_generation_exn.failed():
+                raise seed_generation_exn.error
+            seed_set_text_gens: TextGenerationsPredictionsBase = seed_generation_exn.outputs[
+                'text_gens_expanded_metrics'
+            ][num_shots]['Overall'][MetricName.SaveFilteredDataset].value
+            seed_set: ClassificationData = _text_gens_to_clf_dataset(
+                seed_set_text_gens,
+                data_split=DataSplit.TRAIN,
+                task=SynthesizRRDataset.get(dataset_name.canonical()).task,
+                label_col=label_col,
+                text_col=GENERATED_TEXTS_COL,
             )
-            self.info(f'...done creating seed set at "{seed_set_file.path}".')
-        seed_set: Dataset = load_dataset(seed_set_file, retry=10, retry_wait=10)
+            seed_set: ClassificationData = seed_set.rename_columns(
+                columns={
+                    GENERATED_TEXTS_COL: text_col,
+                }
+            )
+            seed_generations_file: FileMetadata = seed_generation_exn.outputs[
+                'text_gens_expanded_metrics_files'
+            ][num_shots]['Overall'][MetricName.SaveFilteredDataset]
+            if not seed_generations_file.path.startswith(results_dir.path):
+                raise ValueError(
+                    f'Expected `seed_generations_file.path` to be within `results_dir.path`="{results_dir.path}"; '
+                    f'however, found `seed_generations_file.path`="{seed_generations_file.path}"'
+                )
+            seed_generation_params_hash: str = StringUtil.hash(
+                StringUtil.remove_prefix(
+                    seed_generations_file.path,
+                    prefix=results_dir.path,
+                ),
+                max_len=6,
+            )
+            self.info(f'...completed running seed set generation. Generations are saved at: "{seed_generations_file.path}"')
+        else:
+            raise not_impl('seed_type', seed_type)
         self.info(f'Seed set details:')
         self.info(seed_set)
         self.info(f'Seed set label distribution:')
@@ -295,6 +364,7 @@ class CreateSeedSet(CachedResultsStep):
 
         return dict(
             seed_set=seed_set,
+            seed_generation_params_hash=seed_generation_params_hash,
         )
 
     def save_to(
@@ -306,12 +376,14 @@ class CreateSeedSet(CachedResultsStep):
             seed_size: int,
             seed_set_data_split: DataSplit,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             seed: int,
             **kwargs,
     ) -> FileMetadata:
         ## RESULTS_DIR/seed-set/ag_news/train_set/train_set_seed_set-dataset=ag_news-seed_size=500-stratified=gt_stratified-seed=42.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -347,18 +419,23 @@ class RetrieveFromSeedSet(CachedResultsStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             retrieval_top_k: conint(ge=1),
             query_col: Optional[str] = None,
             label_col: Optional[str] = None,
             seed_set_data_split: DataSplit = DEFAULT_SEED_SET_DATA_SPLIT,
             retriever_num_models: conint(ge=1) = 1,
-            retriever_num_shards: conint(ge=1) = 64,
-            retriever_batch_size: conint(ge=1) = 16,
+            retriever_num_shards: Optional[conint(ge=1)] = None,
+            retriever_batch_size: Optional[conint(ge=1)] = None,
+            retriever_shard_num_cpus: Optional[conint(ge=1)] = None,
             seed: int = DEFAULT_SEED,
             **kwargs,
     ) -> Dict:
         query_col: str = get_default(query_col, dataset_name.query_col())
         label_col: str = get_default(label_col, dataset_name.label_col())
+        retriever_num_shards: int = get_default(retriever_num_shards, corpus.num_shards())
+        retriever_batch_size: int = get_default(retriever_batch_size, retriever.batch_size())
+        retriever_shard_num_cpus: int = get_default(retriever_shard_num_cpus, corpus.shard_num_cpus())
         retr_input: Queries = Dataset.of(
             task=Task.RETRIEVAL,
             split=DataSplit.UNSUPERVISED,
@@ -378,6 +455,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
             seed_type=seed_type,
             seed_size=seed_size,
             seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+            seed_generation_params_hash=seed_generation_params_hash,
             seed_set_data_split=seed_set_data_split,
             retrieval_top_k=retrieval_top_k,
         )
@@ -391,6 +469,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
                 retriever=retriever,
                 num_models=retriever_num_models,
                 num_shards=retriever_num_shards,
+                shard_num_cpus=retriever_shard_num_cpus,
                 batch_size=retriever_batch_size,
                 verbosity=self.verbosity,
                 seed=seed,
@@ -443,13 +522,15 @@ class RetrieveFromSeedSet(CachedResultsStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             seed_set_data_split: DataSplit,
             retrieval_top_k: int,
             **kwargs,
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -489,6 +570,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
             num_models: int,
             num_shards: int,
             batch_size: int,
+            shard_num_cpus: int,
             seed: int,
     ) -> Evaluator:
         embedder_params: Optional[Dict] = None
@@ -516,7 +598,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
             embedder_ndim: int = 384
             resources_per_model: Dict[str, int] = dict(cpu=50)
         elif retriever is Retriever.BM25Okapi:
-            resources_per_model: Dict[str, int] = dict(cpu=6)
+            resources_per_model: Dict[str, int] = dict(cpu=shard_num_cpus)
         elif retriever is Retriever.Random:
             resources_per_model: Dict[str, int] = dict(cpu=6)
         else:
@@ -571,7 +653,10 @@ class RetrieveFromSeedSet(CachedResultsStep):
                     tokenizer=word_tokenize,
                     store_documents=True,
                     num_shards=num_shards,
-                    shard_num_cpus=6,
+                    shard_num_cpus=shard_num_cpus,
+                    indexing_parallelize='processes',
+                    indexing_max_workers=shard_num_cpus,
+                    indexing_batch_size=1_000,
                 ),
                 data=retrieval_corpus,
                 # read_as='pandas',
@@ -586,9 +671,9 @@ class RetrieveFromSeedSet(CachedResultsStep):
                 # indexing_max_workers=6,
                 indexing_progress_bar=(verbosity >= 2),
             )
-
+            self.info('Creating BM25-Ray Okapi retriever...')
             retriever: Evaluator = Evaluator.of(
-                'ray',
+                'local',
                 task=Task.RETRIEVAL,
                 algorithm='SparseRetriever',
                 num_models=num_models,
@@ -599,6 +684,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
                 ),
                 verbosity=verbosity,
             )
+            self.info('...done creating BM25-Ray Okapi retriever.')
         else:
             if retriever is not Retriever.Random:
                 raise not_impl('retriever', retriever, Retriever.Random)
@@ -637,6 +723,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
             label_verbalizer: Dict[str, str],
             label_col: str,
             text_col: str,
+            num_shots_list: List[conint(ge=0)],
             model_name: ModelName,
             label_text: str,
             max_tokens: int,
@@ -677,10 +764,10 @@ class CreateInputDatasets(CachedResultsStep, ABC):
                 LABEL_VERBALIZATION_COL: MLType.TEXT,
             },
         )
-        if len(labelwise_icl_dataset) < 32:
+        if len(labelwise_icl_dataset) < max(num_shots_list):
             raise ValueError(
                 f'Insufficient number of ICL examples within label={label_text}; '
-                f'found only {len(labelwise_icl_dataset)} ICL examples.'
+                f'found only {len(labelwise_icl_dataset)} ICL examples, need at least {max(num_shots_list)}.'
             )
 
         labelwise_fewgen_dataset: List[Dict] = []
@@ -735,6 +822,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
             query_col: str,
             context_col: str,
             label_col: str,
+            num_shots_list: List[conint(ge=0)],
             model_name: ModelName,
             label_text: str,
             icl_type: Literal['retrieved', 'curated', 'seed'],
@@ -820,10 +908,10 @@ class CreateInputDatasets(CachedResultsStep, ABC):
                 LABEL_VERBALIZATION_COL: MLType.TEXT
             },
         )
-        if len(labelwise_icl_dataset) < 3:
+        if len(labelwise_icl_dataset) < max(num_shots_list):
             raise ValueError(
                 f'Insufficient number of ICL examples within label={label_text}; '
-                f'found only {len(labelwise_icl_dataset)} ICL examples.'
+                f'found only {len(labelwise_icl_dataset)} ICL examples, need at least {max(num_shots_list)}.'
             )
 
         labelwise_synthesizrr_dataset: TextInputs = Dataset.of(
@@ -1001,12 +1089,14 @@ class CreateFewGenDatasets(CreateInputDatasets):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             fewgen_max_tokens: conint(ge=1),
             seed_set_data_split: DataSplit = DEFAULT_SEED_SET_DATA_SPLIT,
             num_samples_per_label: Union[Dict[str, conint(ge=1)], conint(ge=1)],
             seed: int = DEFAULT_SEED,
             text_col: Optional[str] = None,
             label_col: Optional[str] = None,
+            num_shots_list: List[conint(ge=0)],
             **kwargs,
     ) -> Dict:
         text_col: str = get_default(text_col, dataset_name.text_col())
@@ -1034,6 +1124,7 @@ class CreateFewGenDatasets(CreateInputDatasets):
                     seed_type=seed_type,
                     seed_size=seed_size,
                     seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     label_text=label_text,
                     num_samples_per_label=num_samples_per_label[label_text],
                     seed_set_data_split=seed_set_data_split,
@@ -1050,6 +1141,7 @@ class CreateFewGenDatasets(CreateInputDatasets):
                         label_verbalizer=label_verbalizer,
                         label_col=label_col,
                         text_col=text_col,
+                        num_shots_list=num_shots_list,
                         model_name=model_name,
                         label_text=label_text,
                         num_samples_per_label=num_samples_per_label[label_text],
@@ -1106,6 +1198,7 @@ class CreateFewGenDatasets(CreateInputDatasets):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             label_text: str,
             num_samples_per_label: conint(ge=1),
             seed: int,
@@ -1114,7 +1207,8 @@ class CreateFewGenDatasets(CreateInputDatasets):
     ) -> Tuple[FileMetadata, FileMetadata]:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -1169,6 +1263,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             seed_set_retr_input: Queries,
             seed_set_retr_output: RankedResults,
             icl_type: Literal['retrieved', 'curated', 'seed'],
@@ -1186,6 +1281,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
             query_col: Optional[str] = None,
             context_col: Optional[str] = None,
             label_col: Optional[str] = None,
+            num_shots_list: List[conint(ge=0)],
             **kwargs,
     ) -> Dict:
         if icl_type == 'curated':
@@ -1223,6 +1319,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
                     seed_type=seed_type,
                     seed_size=seed_size,
                     seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     icl_type=icl_type,
                     label_text=label_text,
                     retrieval_top_k=retrieval_top_k,
@@ -1249,6 +1346,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
                         query_col=query_col,
                         context_col=context_col,
                         label_col=label_col,
+                        num_shots_list=num_shots_list,
                         model_name=model_name,
                         label_text=label_text,
                         icl_type=icl_type,
@@ -1314,6 +1412,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             icl_type: Literal['retrieved', 'curated', 'seed'],
             label_text: str,
             retr_icl_top_ks: List[conint(ge=1)],
@@ -1328,7 +1427,8 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
     ) -> Tuple[FileMetadata, FileMetadata]:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -1389,53 +1489,141 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
 
 
 class LLMEvaluatorStep(CachedResultsStep, ABC):
-    @safe_validate_arguments
+    # @safe_validate_arguments
     def _run_llm_evaluators(
             self,
             *,
             dataset_name: DatasetName,
             model_name: ModelName,
-            text_gens_files: Dict[int, Dict[str, FileMetadata]],
-            label_verbalizer: Dict[str, str],
-            max_new_tokens: conint(ge=1),
-            llm_batch_size: conint(ge=1),
-            llm_submission_batch_size: Optional[conint(ge=1)],
-            llm_tracking_batch_size: Optional[conint(ge=1)],
-            icl_dataset: ClassificationData,
-            text_input_dataset: TextInputs,
+
+            text_input_dataset: TextInputs,  ## Input prompts
+            icl_dataset: ClassificationData,  ## Input ICL dataset
             icl_template: constr(min_length=1),
             prompt_template: constr(min_length=1),
+            text_gens_files: Dict[int, Dict[str, FileMetadata]],  ## Outputs will be saved here
+
+            label_verbalizer: Dict[str, str],
+            label_col: str,
+            max_new_tokens: conint(ge=1),
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
+
             llm_resources_per_model: Dict[str, conint(ge=1)],
             llm_num_concurrent_preds: conint(ge=1),
             llm_num_models: Optional[conint(ge=1)],
-            label_col: str,
             llm_load_balancing_strategy: LoadBalancingStrategy,
+            llm_batch_size: conint(ge=1),
+            llm_submission_batch_size: Optional[conint(ge=1)],
+            llm_tracking_batch_size: Optional[conint(ge=1)],
+            llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True),
+
+            seed: int,
+    ) -> Dict[int, Dict[str, TextGenerationsPredictionsBase]]:
+        eval_strategy: str = 'split_by_num_shots_and_label'
+
+        if eval_strategy == 'split_by_num_shots_and_label':
+            return self._run_split_by_num_shots_and_label(
+                dataset_name=dataset_name,
+                model_name=model_name,
+                text_input_dataset=text_input_dataset,
+                icl_dataset=icl_dataset,
+                icl_template=icl_template,
+                prompt_template=prompt_template,
+                text_gens_files=text_gens_files,
+                label_verbalizer=label_verbalizer,
+                label_col=label_col,
+                generation_params=None,
+                max_new_tokens=max_new_tokens,
+                top_p=top_p,
+                temperature=temperature,
+                llm_resources_per_model=llm_resources_per_model,
+                llm_num_concurrent_preds=llm_num_concurrent_preds,
+                llm_num_models=llm_num_models,
+                llm_load_balancing_strategy=llm_load_balancing_strategy,
+                llm_batch_size=llm_batch_size,
+                llm_submission_batch_size=llm_submission_batch_size,
+                llm_tracking_batch_size=llm_tracking_batch_size,
+                llm_evaluation_timeout=llm_evaluation_timeout,
+                seed=seed,
+            )
+        else:
+            raise not_impl('eval_strategy', eval_strategy)
+
+    def _run_split_by_num_shots_and_label(
+            self,
+            dataset_name: DatasetName,
+            model_name: ModelName,
+            text_input_dataset: TextInputs,  ## Input prompts
+            icl_dataset: ClassificationData,  ## Input ICL dataset
+            icl_template: constr(min_length=1),
+            prompt_template: constr(min_length=1),
+            text_gens_files: Dict[int, Dict[str, FileMetadata]],  ## Outputs will be saved here
+            label_verbalizer: Dict[str, str],
+            label_col: str,
+            generation_params: Optional[Dict],
+            max_new_tokens: conint(ge=1),
+            top_p: confloat(ge=0.0, le=1.0),
+            temperature: confloat(ge=0.0, le=1e6),
+            llm_resources_per_model: Dict[str, conint(ge=1)],
+            llm_num_concurrent_preds: conint(ge=1),
+            llm_num_models: Optional[conint(ge=1)],
+            llm_load_balancing_strategy: LoadBalancingStrategy,
+            llm_batch_size: conint(ge=1),
+            llm_submission_batch_size: Optional[conint(ge=1)],
+            llm_tracking_batch_size: Optional[conint(ge=1)],
+            llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True),
+            seed: int,
     ) -> Dict[int, Dict[str, TextGenerationsPredictionsBase]]:
         executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=llm_num_concurrent_preds)
         llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = {}
         num_shots_list: List[int] = sorted(list(text_gens_files.keys()))
+        ## Create one for every (num_shots, label) pair
+        text_generators: Dict[int, Dict[str, FewShotTextGenerator]] = {}
         try:
             self.info(f'Creating LLM evaluators for "{model_name.canonical()}"...')
-            llm_evaluators: Dict[int, Dict[str, FewShotTextGenerator]] = self._create_llm_evaluators(
+            llm_evaluator: Evaluator = self._create_single_llm_evaluator(
                 model_name=model_name,
-                num_shots_list=num_shots_list,
-                label_verbalizer=label_verbalizer,
-                max_new_tokens=max_new_tokens,
                 llm_batch_size=llm_batch_size,
-                llm_tracking_batch_size=llm_tracking_batch_size,
-                llm_submission_batch_size=llm_submission_batch_size,
-                icl_dataset=icl_dataset,
-                text_input_dataset=text_input_dataset,
-                icl_template=icl_template,
-                prompt_template=prompt_template,
+                generation_params=generation_params,
+                max_new_tokens=max_new_tokens,
                 top_p=top_p,
                 temperature=temperature,
                 llm_resources_per_model=llm_resources_per_model,
                 llm_num_models=llm_num_models,
-                label_col=label_col,
+
             )
+            for num_shots in num_shots_list:
+                text_generators.setdefault(num_shots, {})
+                for label_text, label_verbalization in label_verbalizer.items():
+                    labelwise_icl_dataset: ClassificationData = icl_dataset.filter(
+                        lambda row: row[label_col] == label_text
+                    ).to_layout(DataLayout.PANDAS)
+                    labelwise_icl_dataset.data = labelwise_icl_dataset.data.reset_index(drop=True)
+                    labelwise_text_input_dataset: TextInputs = text_input_dataset.filter(
+                        lambda row: row[label_col] == label_text
+                    ).to_layout(DataLayout.PANDAS)
+                    llm_tracking_batch_size: int = get_default(
+                        llm_tracking_batch_size,
+                        math.ceil(len(labelwise_text_input_dataset) / 10)  ## Default: 10 increments
+                    )
+                    llm_tracking_batch_size: int = max(llm_tracking_batch_size, llm_submission_batch_size)
+                    # print(f'icl_template="""\n{icl_template.format(**dict(label_verbalization=label_verbalization))}\n"""')
+                    # print(f'prompt_template="""\n{prompt_template.format(**dict(label_verbalization=label_verbalization))}\n"""')
+                    text_generators[num_shots][label_text]: FewShotTextGenerator = FewShotTextGenerator.of(
+                        lm=llm_evaluator,
+                        icl_dataset=labelwise_icl_dataset,
+                        hyperparams=dict(
+                            num_shots=num_shots,
+                            batch_size=llm_tracking_batch_size,
+                            icl_template=icl_template.format(**dict(
+                                label_verbalization=label_verbalization,
+                            )),
+                            prompt_template=prompt_template.format(**dict(
+                                label_verbalization=label_verbalization,
+                            )),
+                        ),
+                    )
+
             self.info(f'...done creating LLM evaluators for "{model_name.canonical()}"...')
             self.info(f'Running LLM evaluators for "{model_name.canonical()}"...')
             for num_shots in text_gens_files.keys():
@@ -1447,19 +1635,23 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                     labelwise_text_input_dataset: TextInputs = labelwise_text_input_dataset.to_layout(DataLayout.PANDAS)
                     labelwise_text_input_dataset.data = labelwise_text_input_dataset.data.reset_index(drop=True)
                     llm_generations[num_shots][label_text] = run_concurrent(
-                        self._run_single_llm_evaluator,
-                        llm_evaluator=llm_evaluators[num_shots][label_text],
-                        labelwise_text_input_dataset=labelwise_text_input_dataset,
+                        self._run_single_text_generator,
+                        text_generator=text_generators[num_shots][label_text],
+                        text_input_dataset=labelwise_text_input_dataset,
                         progress_bar=dict(
-                            desc=f'{model_name.canonical()}, num_shots={num_shots}, label={label_text}',
+                            desc=f'{dataset_name.canonical()}, '
+                                 f'{model_name.canonical()}, '
+                                 f'num_shots={num_shots}, '
+                                 f'label={label_text}',
                         ) if self.verbosity >= 2 else False,
-                        submission_batch_size=get_default(llm_submission_batch_size, llm_batch_size * 8),
+                        llm_submission_batch_size=get_default(llm_submission_batch_size, llm_batch_size * 8),
                         text_gens_file=text_gens_file,
                         dataset_name=dataset_name,
                         model_name=model_name,
                         num_shots=num_shots,
                         label_text=label_text,
                         llm_load_balancing_strategy=llm_load_balancing_strategy,
+                        llm_evaluation_timeout=llm_evaluation_timeout,
                         executor=executor,
                     )
                     time.sleep(10)
@@ -1475,95 +1667,50 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             self.info(f'...done running LLM evaluators for "{model_name.canonical()}".')
         finally:
             stop_executor(executor)
-            if 'llm_evaluators' in locals():
-                self._stop_llm_evaluators(llm_evaluators)
+            for num_shots in text_generators.keys():
+                for label_text in text_generators[num_shots].keys():
+                    text_generator: FewShotTextGenerator = text_generators[num_shots][label_text]
+                    if isinstance(text_generator.lm, Evaluator):
+                        text_generator.lm.stop()
             gc.collect()
         return llm_generations
 
-    def _run_single_llm_evaluator(
+    def _create_single_llm_evaluator(
             self,
-            llm_evaluator: FewShotTextGenerator,
-            labelwise_text_input_dataset: TextInputs,
-            progress_bar: Union[Dict, bool],
-            submission_batch_size: int,
-            text_gens_file: FileMetadata,
-            dataset_name: DatasetName,
             model_name: ModelName,
-            num_shots: int,
-            label_text: str,
-            llm_load_balancing_strategy: LoadBalancingStrategy,
-    ) -> TextGenerationsPredictionsBase:
-        self.info(
-            f'>> Generating responses for {len(labelwise_text_input_dataset)} inputs for ('
-            f'dataset_name={dataset_name.canonical()}, '
-            f'model_name={model_name.canonical()}, '
-            f'num_shots={num_shots}, '
-            f'label_text={label_text}'
-            f') to "{text_gens_file.path}"...'
-        )
-        text_gens: Predictions = llm_evaluator.predict(
-            labelwise_text_input_dataset,
-            progress_bar=progress_bar,
-            tracker=False,
-            submission_batch_size=submission_batch_size,
-            load_balancing_strategy=llm_load_balancing_strategy,
-        )
-        assert isinstance(text_gens, TextGenerationsPredictionsBase)
-        self.info(
-            f'>> Saving generations ('
-            f'dataset_name={dataset_name.canonical()}, '
-            f'model_name={model_name.canonical()}, '
-            f'num_shots={num_shots}, '
-            f'label_text={label_text}'
-            f') to "{text_gens_file.path}"...'
-        )
-        save_predictions(
-            predictions=text_gens,
-            predictions_destination=text_gens_file,
-            overwrite=True,
-        )
-        return text_gens
-
-    def _create_llm_evaluators(
-            self,
-            *,
-            model_name: ModelName,
-            num_shots_list: List[conint(ge=0)],
-            label_verbalizer: Dict[str, str],
+            generation_params: Optional[Dict],
             max_new_tokens: conint(ge=1),
-            llm_batch_size: conint(ge=1),
-            llm_tracking_batch_size: Optional[conint(ge=1)],
-            llm_submission_batch_size: Optional[conint(ge=1)],
-            icl_dataset: ClassificationData,
-            text_input_dataset: TextInputs,
-            icl_template: constr(min_length=1),
-            prompt_template: constr(min_length=1),
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
+            llm_batch_size: conint(ge=1),
             llm_resources_per_model: Dict[str, conint(ge=1)],
             llm_num_models: Optional[conint(ge=1)],
-            label_col: str,
-    ) -> Dict[int, Dict[str, FewShotTextGenerator]]:
+    ) -> Evaluator:
         ## Create main driver Evaluator.
-        if model_name in {ModelName.LLaMa_2_13B, ModelName.LLaMa_2_13B_Chat}:
-            llm_evaluator: Evaluator = self._create_hf_evaluator(
+        if model_name.is_hf():
+            return self._create_hf_evaluator(
                 model_name=model_name,
-                max_new_tokens=max_new_tokens,
                 llm_batch_size=llm_batch_size,
                 llm_num_models=llm_num_models,
                 llm_resources_per_model=llm_resources_per_model,
+                generation_params=generation_params,
+                max_new_tokens=max_new_tokens,
                 top_p=top_p,
                 temperature=temperature,
             )
-        elif model_name in {ModelName.ChatGPT}:
-            llm_evaluator: Evaluator = self._create_chatgpt_evaluator(
+        elif model_name.is_openai():
+            if generation_params is not None:
+                raise ValueError(f'Cannot use `generation_params` with model_name={model_name}')
+            return self._create_chatgpt_evaluator(
                 model_name=model_name,
                 max_new_tokens=max_new_tokens,
                 top_p=top_p,
                 temperature=temperature,
             )
         elif model_name.is_claude():
-            llm_evaluator: Evaluator = self._create_claude_evaluator(
+            if generation_params is not None:
+                raise ValueError(f'Cannot use `generation_params` with model_name={model_name}')
+            return self._create_claude_evaluator(
                 model_name=model_name,
                 max_new_tokens=max_new_tokens,
                 top_p=top_p,
@@ -1572,37 +1719,53 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
         else:
             raise not_impl('model_name', model_name)
 
-        llm_evaluators: Dict[int, Dict[str, FewShotTextGenerator]] = {}
-        for num_shots in num_shots_list:
-            llm_evaluators.setdefault(num_shots, {})
-            for label_text, label_verbalization in label_verbalizer.items():
-                labelwise_icl_dataset: ClassificationData = icl_dataset.filter(
-                    lambda row: row[label_col] == label_text
-                ).to_layout(DataLayout.PANDAS)
-                labelwise_icl_dataset.data = labelwise_icl_dataset.data.reset_index(drop=True)
-                labelwise_text_input_dataset: TextInputs = text_input_dataset.filter(
-                    lambda row: row[label_col] == label_text
-                ).to_layout(DataLayout.PANDAS)
-                llm_tracking_batch_size: int = get_default(
-                    llm_tracking_batch_size,
-                    math.ceil(len(labelwise_text_input_dataset) / 10)  ## Default: 10 increments
-                )
-                llm_tracking_batch_size: int = max(llm_tracking_batch_size, llm_submission_batch_size)
-                llm_evaluators[num_shots][label_text]: FewShotTextGenerator = FewShotTextGenerator.of(
-                    lm=llm_evaluator,
-                    icl_dataset=labelwise_icl_dataset,
-                    hyperparams=dict(
-                        num_shots=num_shots,
-                        batch_size=llm_tracking_batch_size,
-                        icl_template=icl_template.format(**dict(
-                            label_verbalization=label_verbalization,
-                        )),
-                        prompt_template=prompt_template.format(**dict(
-                            label_verbalization=label_verbalization,
-                        )),
-                    ),
-                )
-        return llm_evaluators
+    def _run_single_text_generator(
+            self,
+            text_generator: FewShotTextGenerator,
+            text_input_dataset: TextInputs,
+            progress_bar: Union[Dict, bool],
+            text_gens_file: Optional[FileMetadata],
+            dataset_name: DatasetName,
+            model_name: ModelName,
+            num_shots: int,
+            label_text: str,
+            llm_submission_batch_size: int,
+            llm_load_balancing_strategy: LoadBalancingStrategy,
+            llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True),
+    ) -> TextGenerationsPredictionsBase:
+        self.info(
+            f'>> Generating responses for {len(text_input_dataset)} inputs for ('
+            f'dataset_name={dataset_name.canonical()}, '
+            f'model_name={model_name.canonical()}, '
+            f'num_shots={num_shots}, '
+            f'label_text={label_text}'
+            f'){f"to {text_gens_file.path}" if text_gens_file is not None else ""}...'
+        )
+        text_gens: Predictions = text_generator.predict(
+            text_input_dataset,
+            progress_bar=progress_bar,
+            tracker=False,
+            submission_batch_size=llm_submission_batch_size,
+            evaluation_timeout=llm_evaluation_timeout,
+            load_balancing_strategy=llm_load_balancing_strategy,
+        )
+        assert isinstance(text_gens, TextGenerationsPredictionsBase)
+        if text_gens_file is not None:
+            self.info(
+                f'>> Saving generations ('
+                f'dataset_name={dataset_name.canonical()}, '
+                f'model_name={model_name.canonical()}, '
+                f'num_shots={num_shots}, '
+                f'label_text={label_text}'
+                f') to "{text_gens_file.path}"...'
+            )
+            save_predictions(
+                predictions=text_gens,
+                predictions_destination=text_gens_file,
+                overwrite=True,
+            )
+        return text_gens
+
 
     def _create_chatgpt_evaluator(
             self,
@@ -1661,18 +1824,38 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             self,
             *,
             model_name: ModelName,
-            max_new_tokens: int,
             llm_batch_size: int,
             llm_num_models: Optional[int],
             llm_resources_per_model: Dict[str, conint(ge=1)],
+            generation_params: Optional[Dict],
+            max_new_tokens: int,
             top_p: float,
             temperature: float,
     ) -> Evaluator:
+        if generation_params is None:
+            generation_params = dict(
+                name='top-p',
+                top_p=top_p,
+                temperature=temperature,
+                output_scores=False,
+                output_scores_tolerance=1e-2,
+                max_new_tokens=max_new_tokens,
+            )
+
+        device_map: Optional[str] = None
+        torch_dtype: Optional[str] = None
+        if model_name.nested_evaluator() == 'local':
+            torch_dtype: str = model_name.model_weights_dtype()
+            device_map: str = 'auto'
+            if llm_resources_per_model.get('gpu', 0) > 4:
+                device_map: str = 'balanced_low_0'
+
         hf_llm_evaluator = Evaluator.of(
             evaluator='ray',
             algorithm=model_name.algorithm_name(),
             task=Task.NEXT_TOKEN_PREDICTION,
-            nested_evaluator_name='accelerate',
+            nested_evaluator_name=model_name.nested_evaluator(),
+            use_hf_from_pretrained=model_name.nested_evaluator_use_hf_from_pretrained(),
 
             cache_dir=EFS_HUGGINGFACE_CACHE_DIR,
 
@@ -1683,6 +1866,9 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             hyperparams=dict(
                 batch_size=llm_batch_size,
                 model_name=model_name.model_name(),
+                api_key=model_name.api_key(),
+                torch_dtype=torch_dtype,
+                device_map=device_map,
                 tokenizer_config=dict(
                     pad_token=model_name.pad_token(),
                     padding_side='left',
@@ -1691,30 +1877,16 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                 tokenizer_encode=dict(
                     max_length=model_name.max_input_length(),
                 ),
-                generation_params=dict(
-                    name='top-p',
-                    top_p=top_p,
-                    temperature=temperature,
-                    output_scores=False,
-                    output_scores_tolerance=1e-2,
-                    max_new_tokens=max_new_tokens,
-                ),
+                generation_params=generation_params,
             ),
             ## To work with the model interactively, set this to a number (seconds)
             ## denoting how long the models stay in memory (recommended is 15 mins).
             cache_timeout=12 * 60 * 60,
-            verbosity=1 if self.verbosity >= 3 else 0,
+            verbosity=max(0, self.verbosity - 1),
             init_model=True,
         )
         time.sleep(30)
         return hf_llm_evaluator
-
-    def _stop_llm_evaluators(self, llm_evaluators: Dict[int, Dict[str, FewShotTextGenerator]]):
-        for num_shots in llm_evaluators.keys():
-            for label_text in llm_evaluators[num_shots].keys():
-                llm_evaluator: FewShotTextGenerator = llm_evaluators[num_shots][label_text]
-                if isinstance(llm_evaluator.lm, Evaluator):
-                    llm_evaluator.lm.stop()
 
     def _load_text_gens(
             self,
@@ -1771,19 +1943,25 @@ class FewGen(LLMEvaluatorStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
-            fewgen_max_tokens: conint(ge=1),
+            seed_generation_params_hash: Optional[str],
             num_samples_per_label: Union[Dict[str, conint(ge=1)], conint(ge=1)],
             label_verbalizer: Dict[str, str],
             icl_template: Optional[constr(min_length=1)] = None,
             prompt_template: Optional[constr(min_length=1)] = None,
+
+            ## Generation parameters:
+            fewgen_max_tokens: conint(ge=1),
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
+
             llm_resources_per_model: Dict[str, conint(ge=1)],
             llm_batch_size: conint(ge=1),
             llm_submission_batch_size: Optional[conint(ge=1)] = None,
             llm_tracking_batch_size: Optional[conint(ge=1)] = None,
             llm_num_concurrent_preds: conint(ge=1) = 6,
             llm_num_models: Optional[conint(ge=1)] = None,
+            llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True) = math.inf,
+
             seed: int = DEFAULT_SEED,
             seed_set_data_split: DataSplit = DEFAULT_SEED_SET_DATA_SPLIT,
             text_col: Optional[str] = None,
@@ -1821,9 +1999,12 @@ class FewGen(LLMEvaluatorStep):
                     seed_type=seed_type,
                     seed_size=seed_size,
                     seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     num_samples_per_label=num_samples_per_label[label_text],
                     seed=seed,
                     fewgen_max_tokens=fewgen_max_tokens,
+                    top_p=top_p,
+                    temperature=temperature,
                     icl_template_hash=icl_template_hash,
                     prompt_template_hash=prompt_template_hash,
                 )
@@ -1861,6 +2042,8 @@ class FewGen(LLMEvaluatorStep):
                 llm_num_models=llm_num_models,
                 label_col=label_col,
                 llm_load_balancing_strategy=llm_load_balancing_strategy,
+                llm_evaluation_timeout=llm_evaluation_timeout,
+                seed=seed,
             )
         text_gens: Dict[int, TextGenerationsPredictionsBase] = self._load_text_gens(
             text_gens_files=text_gens_files,
@@ -1885,7 +2068,10 @@ class FewGen(LLMEvaluatorStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             fewgen_max_tokens: conint(ge=1),
+            top_p: confloat(ge=0.0, le=1.0),
+            temperature: confloat(ge=0.0, le=1e6),
             icl_template_hash: Optional[constr(min_length=6)],
             prompt_template_hash: Optional[constr(min_length=6)],
             num_samples_per_label: conint(ge=1),
@@ -1894,7 +2080,8 @@ class FewGen(LLMEvaluatorStep):
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -1919,6 +2106,13 @@ class FewGen(LLMEvaluatorStep):
         if label_verbalization != dataset_name.label_verbalizer()[label_text]:
             label_verbalization_str: str = f'-vb={StringUtil.hash(label_verbalization, max_len=4)}'
 
+        top_p_str: str = ''
+        if top_p != DEFAULT_TOP_P:
+            top_p_str = f'-top_p={top_p:.2f}'
+        temperature_str: str = ''
+        if temperature != DEFAULT_TEMPERATURE:
+            temperature_str = f'-temp={temperature}'
+
         return results_dir.subdir_in_dir('few-shot-generation', return_metadata=True) \
             .subdir_in_dir(dataset_name.canonical(), return_metadata=True) \
             .subdir_in_dir('fewgen-generations', return_metadata=True) \
@@ -1936,6 +2130,8 @@ class FewGen(LLMEvaluatorStep):
             f"{label_verbalization_str}"
             f"-seed={seed}"
             f"-fewgen_max_tokens={fewgen_max_tokens}"
+            f"{top_p_str}"
+            f"{temperature_str}"
             f"{icl_template_hash_str}"
             f"{prompt_template_hash_str}"
             f".parquet",
@@ -1959,19 +2155,23 @@ class SynthesizRR(LLMEvaluatorStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             icl_type: Literal['retrieved', 'curated', 'seed'],
             retr_icl_top_ks: List[conint(ge=1)],
             retr_icl_distance_range: Tuple[float, float],
             retr_icl_token_range: Tuple[conint(ge=1), conint(ge=1)],
             synthesizrr_top_k_range: range,
             synthesizrr_distance_range: Tuple[float, float],  ## (0.4, 0.9)
-            synthesizrr_max_tokens: conint(ge=1),
             num_samples_per_label: Optional[Union[Dict[str, conint(ge=1)], conint(ge=1)]],
             label_verbalizer: Dict[str, str],
             icl_template: Optional[constr(min_length=1)] = None,
             prompt_template: Optional[constr(min_length=1)] = None,
+
+            ## Generation params:
+            synthesizrr_max_tokens: conint(ge=1),
             top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=100.0),
+            temperature: confloat(ge=0.0, le=1e6),
+
             llm_resources_per_model: Dict[str, conint(ge=1)],
             llm_batch_size: conint(ge=1),
             llm_submission_batch_size: Optional[conint(ge=1)] = None,
@@ -1984,6 +2184,7 @@ class SynthesizRR(LLMEvaluatorStep):
             context_col: Optional[str] = None,
             label_col: Optional[str] = None,
             llm_load_balancing_strategy: LoadBalancingStrategy = LoadBalancingStrategy.LEAST_USED,
+            llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True) = math.inf,
             **kwargs,
     ) -> Dict:
         query_col: str = get_default(query_col, dataset_name.query_col())
@@ -2019,6 +2220,7 @@ class SynthesizRR(LLMEvaluatorStep):
                     seed_type=seed_type,
                     seed_size=seed_size,
                     seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
                     icl_type=icl_type,
                     retr_icl_top_ks=retr_icl_top_ks,
                     retr_icl_distance_range=retr_icl_distance_range,
@@ -2026,6 +2228,8 @@ class SynthesizRR(LLMEvaluatorStep):
                     synthesizrr_top_k_range=synthesizrr_top_k_range,
                     synthesizrr_distance_range=synthesizrr_distance_range,
                     synthesizrr_max_tokens=synthesizrr_max_tokens,
+                    top_p=top_p,
+                    temperature=temperature,
                     icl_template_hash=icl_template_hash,
                     prompt_template_hash=prompt_template_hash,
                     num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
@@ -2065,6 +2269,8 @@ class SynthesizRR(LLMEvaluatorStep):
                 llm_num_models=llm_num_models,
                 label_col=label_col,
                 llm_load_balancing_strategy=llm_load_balancing_strategy,
+                llm_evaluation_timeout=llm_evaluation_timeout,
+                seed=seed,
             )
         text_gens: Dict[int, TextGenerationsPredictionsBase] = self._load_text_gens(
             text_gens_files=text_gens_files,
@@ -2091,6 +2297,7 @@ class SynthesizRR(LLMEvaluatorStep):
             seed_type: Literal['generated', 'train_set'],
             seed_size: int,
             seed_set_stratify_on_ground_truth: bool,
+            seed_generation_params_hash: Optional[str],
             icl_type: Literal['retrieved', 'curated', 'seed'],
             retr_icl_top_ks: List[conint(ge=1)],
             retr_icl_distance_range: Tuple[float, float],
@@ -2098,6 +2305,8 @@ class SynthesizRR(LLMEvaluatorStep):
             synthesizrr_top_k_range: range,
             synthesizrr_distance_range: Tuple[float, float],  ## (0.4, 0.9)
             synthesizrr_max_tokens: conint(ge=1),
+            top_p: confloat(ge=0.0, le=1.0),
+            temperature: confloat(ge=0.0, le=1e6),
             icl_template_hash: Optional[constr(min_length=6)],
             prompt_template_hash: Optional[constr(min_length=6)],
             num_samples_per_label: Optional[conint(ge=1)],
@@ -2106,7 +2315,8 @@ class SynthesizRR(LLMEvaluatorStep):
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
         if seed_type == 'generated':
-            seed_type_str: str = f'generated_seed_set'
+            assert seed_generation_params_hash is not None
+            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
         elif seed_type == 'train_set':
             seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
         else:
@@ -2140,6 +2350,13 @@ class SynthesizRR(LLMEvaluatorStep):
         if label_verbalization != dataset_name.label_verbalizer()[label_text]:
             label_verbalization_str: str = f'-vb={StringUtil.hash(label_verbalization, max_len=4)}'
 
+        top_p_str: str = ''
+        if top_p != DEFAULT_TOP_P:
+            top_p_str = f'-top_p={top_p:.2f}'
+        temperature_str: str = ''
+        if temperature != DEFAULT_TEMPERATURE:
+            temperature_str = f'-temp={temperature}'
+
         return results_dir.subdir_in_dir('retrieval-augmented-dataset-generation', return_metadata=True) \
             .subdir_in_dir(dataset_name.canonical(), return_metadata=True) \
             .subdir_in_dir('synthesizrr-generations', return_metadata=True) \
@@ -2167,6 +2384,8 @@ class SynthesizRR(LLMEvaluatorStep):
             f"-synthesizrr_top_k_range=range({synthesizrr_top_k_range.start}, {synthesizrr_top_k_range.stop}, {synthesizrr_top_k_range.step})"
             f"-synthesizrr_distance_range={synthesizrr_distance_range}"
             f"-synthesizrr_max_tokens={synthesizrr_max_tokens}"
+            f"{top_p_str}"
+            f"{temperature_str}"
             f"{icl_template_hash_str}"
             f"{prompt_template_hash_str}"
             f".parquet",

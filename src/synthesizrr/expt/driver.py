@@ -5,7 +5,8 @@ import ray
 from synthesizrr.base.framework import *
 from synthesizrr.base.framework.dl.torch import *
 from synthesizrr.base.util import *
-from synthesizrr.expt.common import MetricName, LABEL_OVERALL, Experiment, Student, DatasetFilterParams
+from synthesizrr.expt.common import MetricName, LABEL_OVERALL, Experiment, Student, DatasetFilterParams, \
+    DEFAULT_TOP_P, DEFAULT_TEMPERATURE
 from synthesizrr.expt.metrics import GoldDatasetMetrics, SynthesizRRTextGenMetrics, FewGenTextGenMetrics
 from synthesizrr.expt.generation import DatasetName, Corpus, ModelName, Retriever
 from synthesizrr.expt.generation import EmbedCorpus, CreateSeedSet, RetrieveFromSeedSet, CreateSynthesizRRDatasets, SynthesizRR, \
@@ -59,8 +60,8 @@ def run_chain(
         *,
         expt: Experiment,
         results_dir: FileMetadata,
-        notifier: Notifier,
-        tracker: Tracker,
+        notifier: Optional[Notifier],
+        tracker: Optional[Tracker],
         background: bool,
         step_wait: confloat(ge=0.0) = 30,  ## To avoid AWS creds error when running many in parallel
         pause: confloat(ge=0.0) = 3,
@@ -72,8 +73,9 @@ def run_chain(
         seed_type: Optional[Literal['generated', 'train_set']] = None,
         seed_size: Optional[conint(ge=1)] = None,
         seed_set_stratify_on_ground_truth: bool = True,
-        top_p: confloat(ge=0.0, le=1.0) = 0.9,
-        temperature: confloat(ge=0.0, le=1.0) = 0.95,
+        seed_generation_params: Optional[Dict] = None,
+        top_p: confloat(ge=0.0, le=1.0) = DEFAULT_TOP_P,
+        temperature: confloat(ge=0.0, le=1e6) = DEFAULT_TEMPERATURE,
         icl_and_prompt_template: Optional[Dict[str, str]] = None,
         label_verbalizer: Optional[Dict[str, str]] = None,
         num_shots_list: Optional[List[conint(ge=0)]] = None,
@@ -101,6 +103,7 @@ def run_chain(
             Union[confloat(ge=0.0, lt=1.0), conint(ge=0)]
         ]] = None,
         llm_load_balancing_strategy: LoadBalancingStrategy = LoadBalancingStrategy.LEAST_USED,
+        llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True) = math.inf,
 
         text_gens_parser: Optional[Callable] = None,
         text_gens_parser_type: Literal['default', 'rejection'] = 'rejection',
@@ -121,11 +124,7 @@ def run_chain(
                 MetricName.SelfBLEU,
                 MetricName.Mauve,
 
-                MetricName.StudentTinyBert,
-                MetricName.StudentMiniLM,
-                MetricName.StudentDistilBERT,
-                # MetricName.StudentBERT,
-                # MetricName.StudentDeBERTaV3Base,
+                MetricName.StudentDistilBERT_AttrPromptTable13,
                 MetricName.StudentDeBERTaV3Large,
 
                 # MetricName.StudentHPOTinyBert,
@@ -210,6 +209,7 @@ def run_chain(
         seed_type=seed_type,
         seed_size=get_default(seed_size, dataset_name.seed_size()),
         seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+        seed_generation_params=seed_generation_params,
 
         model_name=model_name,
         num_shots_list=get_default(num_shots_list, {
@@ -260,6 +260,7 @@ def run_chain(
         llm_num_models=llm_num_models,
         llm_num_concurrent_preds=llm_num_concurrent_preds,
         llm_load_balancing_strategy=llm_load_balancing_strategy,
+        llm_evaluation_timeout=llm_evaluation_timeout,
 
         metrics_to_evaluate=get_default(metrics_to_evaluate, []),
         metrics_num_samples_per_label=metrics_num_samples_per_label,
