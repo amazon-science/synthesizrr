@@ -817,10 +817,10 @@ class StringUtil:
         return cls.fuzzy_match(string, strings_to_match) is not None
 
     @classmethod
-    def make_heading(cls, heading_text: str, width: int = 85, border: str = '=') -> str:
+    def header(cls, text: str, width: int = 65, border: str = '=') -> str:
         out = ''
         out += border * width + cls.NEWLINE
-        out += ('{:^' + str(width) + 's}').format(heading_text) + cls.NEWLINE
+        out += ('{:^' + str(width) + 's}').format(text) + cls.NEWLINE
         out += border * width + cls.NEWLINE
         return out
 

@@ -1363,8 +1363,10 @@ def filter_keys(
     keys: Set = as_set(keys)
     if how == 'include':
         return keep_keys(d, keys)
-    else:
+    elif how == 'exclude':
         return remove_keys(d, keys)
+    else:
+        raise NotImplementedError(f'Invalid value for parameter `how`: "{how}"')
 
 
 def filter_values(
@@ -1486,6 +1488,15 @@ def eval_dict_values(params: Dict):
         except:
             updated_dict[parameter] = value
     return updated_dict
+
+
+def invert_dict(d: Dict) -> Dict:
+    if not isinstance(d, dict):
+        raise ValueError(f'{d} should be of type dict')
+    d_inv: Dict = {v: k for k, v in d.items()}
+    if len(d_inv) != len(d):
+        raise ValueError(f'Dict is not invertible as values are not unique.')
+    return d_inv
 
 
 ## ======================== NumPy utils ======================== ##
@@ -1927,6 +1938,10 @@ def iter_batches(
                 yield struct.iloc[i: min(i + batch_size, struct_len)]
             else:
                 yield struct[i: min(i + batch_size, struct_len)]
+
+
+def mean(vals):
+    return sum(vals) / len(vals)
 
 
 def random_sample(
@@ -2827,18 +2842,34 @@ class Timeout1Week(Timeout):
 
 
 @contextmanager
-def pd_display(
-        max_rows: Optional[int] = None,
-        max_cols: Optional[int] = None,
-        max_colwidth: Optional[int] = None,
-        vertical_align: str = 'top',
-        text_align: str = 'left',
-        ignore_css: bool = False,
-):
+def pd_display(**kwargs):
+    """
+    Use pd.describe_option('display') to see all options.
+    """
     try:
         from IPython.display import display
     except ImportError:
         display = print
+    set_param_from_alias(params=kwargs, param='max_rows', alias=['num_rows', 'nrows', 'rows'], default=None)
+    set_param_from_alias(params=kwargs, param='max_cols', alias=['num_cols', 'ncols', 'cols'], default=None)
+    set_param_from_alias(params=kwargs, param='max_colwidth', alias=[
+        'max_col_width',
+        'max_columnwidth', 'max_column_width',
+        'columnwidth', 'column_width',
+        'colwidth', 'col_width',
+    ], default=None)
+    set_param_from_alias(params=kwargs, param='vertical_align', alias=['valign'], default='top')
+    set_param_from_alias(params=kwargs, param='text_align', alias=['textalign'], default='left')
+    set_param_from_alias(params=kwargs, param='ignore_css', alias=['css'], default=False)
+
+    max_rows: Optional[int] = kwargs.get('max_rows')
+    max_cols: Optional[int] = kwargs.get('max_cols')
+    max_colwidth: Optional[int] = kwargs.get('max_colwidth')
+    vertical_align: str = kwargs['vertical_align']
+    text_align: str = kwargs['text_align']
+    ignore_css: bool = kwargs['ignore_css']
+
+    # print(kwargs)
 
     def disp(df: pd.DataFrame):
         css = [
@@ -2851,7 +2882,7 @@ def pd_display(
                     ('padding', '10px'),
                 ]
             },
-            ## Align cell to top and left
+            ## Align cell to top and left/center
             {
                 'selector': 'td',
                 'props': [

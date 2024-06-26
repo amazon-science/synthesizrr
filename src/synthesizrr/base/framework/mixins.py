@@ -939,19 +939,16 @@ class InputOutputDataMixin(TaskRegistryMixin, ABC):
             self,
             metric: Optional[Union[Metric, Dict, str]] = None,
             *,
-            rolling: bool = False,
+            rolling: Optional[bool] = None,
+            inplace: Optional[bool] = None,
             **kwargs
     ) -> Metric:
         if metric is None:
-            return Metric.of(**kwargs).evaluate(self)
+            metric: Metric = Metric.of(**kwargs)
         if isinstance(metric, str):
-            return Metric.of(name=metric, **kwargs).evaluate(self)
-        if isinstance(metric, Metric):
-            if rolling:
-                return metric.evaluate(self, rolling=True)
-            else:
-                return metric.evaluate(self, inplace=False)
-        raise NotImplementedError(f'Unsupported value for input `metric`: {type(metric)} with value:\n{metric}')
+            metric: Metric = Metric.of(name=metric, **kwargs)
+        assert isinstance(metric, Metric)
+        return metric.evaluate(self, rolling=rolling, inplace=inplace)
 
     @safe_validate_arguments
     def columns(

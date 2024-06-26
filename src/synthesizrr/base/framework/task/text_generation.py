@@ -581,14 +581,14 @@ class BeamSearchParams(TextGenerationParams):
 
 class TopKSamplingParams(TextGenerationParams):
     strategy = 'TopKSampling'
-    temperature: confloat(gt=0.0, le=1.0)
+    temperature: confloat(gt=0.0, le=100.0) = 1.0
     do_sample: Literal[True] = True  ## When not doing greedy decoding, we should sample.
 
 
 class NucleusSamplingParams(TextGenerationParams):
     strategy = 'NucleusSampling'
     do_sample: Literal[True] = True  ## When not doing greedy decoding, we should sample.
-    temperature: confloat(gt=0.0, le=1.0)
+    temperature: confloat(gt=0.0, le=100.0) = 1.0
 
 
 class LogitsProcessorListParams(TextGenerationParams):
