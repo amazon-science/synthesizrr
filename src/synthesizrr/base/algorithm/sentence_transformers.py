@@ -2,7 +2,7 @@ from typing import *
 import os
 from synthesizrr.base.util import optional_dependency, set_param_from_alias
 from synthesizrr.base.data import FileMetadata
-from synthesizrr.base.framework.task import EmbeddingData, Embedder, KeyphraseExtraction, KeyphraseData
+from synthesizrr.base.framework.task import EmbeddingData, Embedder
 from synthesizrr.base.framework.dl.torch import PyTorchBaseModel
 from synthesizrr.base.constants import Task, Storage, MLType
 from pydantic import root_validator, conint, confloat
