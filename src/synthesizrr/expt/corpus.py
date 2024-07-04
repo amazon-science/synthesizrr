@@ -168,7 +168,8 @@ def create_amazon_products():
             from transformers import AutoTokenizer
             tokenizer = AutoTokenizer.from_pretrained('TheBloke/Llama-2-13B-fp16')
             sum_is: int = sum(
-                [len(input_ids) for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)['input_ids']])
+                [len(input_ids) for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)['input_ids']]
+            )
             return sum_is
 
         counts: List[int] = accumulate([
@@ -333,8 +334,85 @@ def create_realnews():
     write_realnews_partition(realnews_dominant, corpus_dir=corpus_dir, rn_name='realnews-dominant')
 
 
+def create_cmu_movies():
+    corpus_dir: FileMetadata = FileMetadata.of(
+        f'{CORPUS_DIR}/data/cmu_movies/'
+    )
+    corpus_dir.mkdir()
+    if len(corpus_dir.list()) == 0:
+        raise SystemError(
+            f'Expected CMU Movies to be in folder "{corpus_dir.path}". '
+            f'Please download the data from https://www.cs.cmu.edu/~ark/personas/ and extract it. '
+            f'You should get the folder "MovieSummaries".'
+        )
+    with Timer('Reading and merging plot_summaries.txt and movie.metadata.tsv'):
+        movie_plots: pd.DataFrame = pd.read_csv(
+            corpus_dir.subdir_in_dir('MovieSummaries', return_metadata=True).file_in_dir('plot_summaries.txt'),
+            sep='\t',
+            header=None,
+            names=[
+                'wiki_movie_id',
+                'plot_summary',
+            ]
+        )
+        movie_meta: pd.DataFrame = pd.read_csv(
+            corpus_dir.subdir_in_dir('MovieSummaries', return_metadata=True).file_in_dir('movie.metadata.tsv'),
+            sep='\t',
+            header=None,
+            names=[
+                'wiki_movie_id',
+                'freebase_movie_id',
+                'title',
+                'release_date',
+                'box_office_revenue',
+                'runtime',
+                'languages',
+                'countries',
+                'genres'
+            ]
+        )
+        movies: pd.DataFrame = movie_meta.merge(
+            movie_plots, on='wiki_movie_id'
+        ).reset_index(drop=True).rename(
+            columns=dict(plot_summary='text', wiki_movie_id='idx')
+        )
+        corpus_raw_text_dir: FileMetadata = corpus_dir.subdir_in_dir('raw-text', return_metadata=True)
+        movies.to_parquet(corpus_raw_text_dir.file_in_dir(f'cmu-movie-summary.parquet'))
+        print(f'Done creating CMU Moveis corpus, final data is at: "{corpus_raw_text_dir.path}"')
+
+        def cmu_movies_count_num_tokens(df_path):
+            df_part = Reader.of(
+                'parquet',
+                data_schema={
+                    'wiki_movie_id': 'index',
+                    'plot_summary': 'text',
+                }
+            ).read(df_path, raw=True)
+            ser_part = df_part['plot_summary']
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained('TheBloke/Llama-2-13B-fp16')
+            sum_is: int = sum(
+                [len(input_ids) for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)['input_ids']]
+            )
+            return sum_is
+
+        counts: List[int] = accumulate([
+            run_parallel_ray(
+                cmu_movies_count_num_tokens,
+                df_path=df_path,
+            )
+            for df_path in FileMetadata.of(
+                corpus_raw_text_dir.path,
+                file_glob='*.parquet',
+            ).list()
+        ], progress=True)
+        print(f'CMU Movies corpus has {round(sum(counts) / 1e6, 2)} million tokens')
+
+
 if __name__ == '__main__':
     create_amazon_products()
     gc.collect()
     create_realnews()
+    gc.collect()
+    create_cmu_movies()
     gc.collect()
