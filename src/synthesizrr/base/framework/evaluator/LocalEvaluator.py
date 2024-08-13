@@ -17,7 +17,7 @@ class LocalEvaluator(Evaluator):
     aliases = ['local', 'SimpleEvaluator', 'simple']
 
     ## Cache model locally for 15 mins:
-    cache_timeout: Optional[Union[Timeout, confloat(gt=0)]] = Timeout24Hr(timeout=60 * 15)
+    cache_timeout: Optional[Union[Timeout, confloat(gt=0)]] = Timeout24Hr(timeout=3 * 60 * 60)
 
     def _load_model(
             self,

@@ -553,6 +553,9 @@ class TextGenerationParams(Parameters, ABC):  ## Becomes an anonymous class late
             params['output_scores_tolerance']: Optional[float] = None  ## Do not filter out any tokens.
         else:
             raise NotImplementedError(f'Unsupported `output_scores_format`: "{params["output_scores_format"]}"')
+
+        if params.get('stop_sequences') is not None:
+            params['stop_sequences']: List[str] = as_list(params['stop_sequences'])
         return params
 
     def hf_dict(self) -> Dict:
