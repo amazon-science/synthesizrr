@@ -17,4 +17,5 @@ __pycache__/
 /build
 /doc/_apidoc/
 *.swp
-
+bandit_report_code.txt
+bandit_report.json
