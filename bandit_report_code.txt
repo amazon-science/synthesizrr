@@ -1,0 +1,3011 @@
+Working... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:03
+Run started:2024-03-18 18:18:01.816860
+
+Test results:
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:587:16
+586	                ## Convert from log-softmax-probs to softmax-probs.
+587	                assert renormalize_logits is True
+588	                token_probs: np.ndarray = np.exp(token_probs)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:589:16
+588	                token_probs: np.ndarray = np.exp(token_probs)
+589	                assert min_possible_score == 0.0
+590	                assert 0.0 < output_scores_tolerance < 1.0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:590:16
+589	                assert min_possible_score == 0.0
+590	                assert 0.0 < output_scores_tolerance < 1.0
+591	            elif output_scores_format == 'log-probabilities':
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:593:16
+592	                ## `token_probs` is already in log-softmax form.
+593	                assert renormalize_logits is True
+594	                assert min_possible_score == -inf
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:594:16
+593	                assert renormalize_logits is True
+594	                assert min_possible_score == -inf
+595	                assert output_scores_tolerance < 0.0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:595:16
+594	                assert min_possible_score == -inf
+595	                assert output_scores_tolerance < 0.0
+596	            elif output_scores_format == 'logits':
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:597:16
+596	            elif output_scores_format == 'logits':
+597	                assert renormalize_logits is False
+598	                assert min_possible_score == -inf
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:598:16
+597	                assert renormalize_logits is False
+598	                assert min_possible_score == -inf
+599	                assert output_scores_tolerance is None ## Do not filter out any tokens.
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:599:16
+598	                assert min_possible_score == -inf
+599	                assert output_scores_tolerance is None ## Do not filter out any tokens.
+600	            else:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:603:12
+602	            ## Check dim 0 has same size as number of examples:
+603	            assert token_probs.shape[0] == batch_size
+604	            ## Check dim 1 has same size as number of generated tokens:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:605:12
+604	            ## Check dim 1 has same size as number of generated tokens:
+605	            assert token_probs.shape[1] == num_generated_tokens
+606	            ## Check dim 2 has same size as vocab:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/huggingface/transformers.py:610:12
+609	                token_probs: np.ndarray = token_probs[:, :, :len(id2token_np)]
+610	            assert token_probs.shape[2] == len(id2token_np)
+611	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/sentence_transformers.py:44:16
+43	            else:
+44	                assert model_dir.storage is Storage.LOCAL_FILE_SYSTEM, 'Can only load models from disk.'
+45	                self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_dir.path)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/sklearn/SklearnSGDClassifier.py:32:16
+31	            else:
+32	                assert model_dir.storage is Storage.LOCAL_FILE_SYSTEM, 'Can only load models from disk.'
+33	                self.model: SGDClassifier = joblib.load(os.path.join(model_dir.path, 'model.pkl'))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/algorithm/sklearn/SklearnSGDRegressor.py:29:16
+28	            else:
+29	                assert model_dir.storage is Storage.LOCAL_FILE_SYSTEM, 'Can only load models from disk.'
+30	                self.model: SGDRegressor = joblib.load(os.path.join(model_dir.path, 'model.pkl'))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/constants/Alias.py:286:8
+285	            progress_bar: Optional[Dict] = dict()
+286	        assert progress_bar is None or isinstance(progress_bar, dict)
+287	        return progress_bar
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/FileMetadata.py:30:8
+29	            path: Dict = dict(path=path)
+30	        assert isinstance(path, dict)
+31	        path: Dict = {
+
+--------------------------------------------------
+>> Issue: [B113:request_without_timeout] Requests call without timeout
+   Severity: Medium   Confidence: Low
+   CWE: CWE-400 (https://cwe.mitre.org/data/definitions/400.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b113_request_without_timeout.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/FileMetadata.py:102:23
+101	        elif storage is Storage.URL:
+102	            return str(requests.head(path).status_code).startswith('2')
+103	        raise NotImplementedError(f'Cannot determine whether following path exists on {storage}: "{path}"')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/FileMetadata.py:149:16
+148	            if self.is_path_valid_dir():
+149	                assert file_name is not None
+150	                local_file: FileMetadata = self.file_in_dir(file_name, return_metadata=True)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/FileMetadata.py:152:16
+151	            else:
+152	                assert file_name is None
+153	                local_file: FileMetadata = self
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/FileMetadata.py:209:8
+208	    def __truediv__(self, subdir_name: str) -> FileMetadata:
+209	        assert isinstance(subdir_name, str)
+210	        return self.subdir_in_dir(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/pipeline.py:221:12
+220	            supported_input_mltypes: Tuple[MLType] = data_processor.input_mltypes
+221	            assert input_mltype in supported_input_mltypes, \
+222	                f'"{str(input_mltype)}" not included in supported MLTypes: "{str(supported_input_mltypes)}"'
+223	            ## For 1:1 data processors, the supported input MLType should be a list of MLTypes
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/pipeline.py:304:8
+303	        ## dict returned by create_pipeline_step_processors should have exactly one item.
+304	        assert len(pipeline_step_processors) <= 1
+305	        for input_cols, step_processor in pipeline_step_processors.items():
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/pipeline.py:598:12
+597	            reader: Reader = Reader.of(config.format)
+598	            assert isinstance(reader, ConfigReader)
+599	            Log.debug('\nReading pipeline config...')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/processor/text/TFIDFVectorization.py:40:16
+39	                    ngram_range = tuple(ngram_range)
+40	                assert isinstance(ngram_range, tuple)
+41	                sklearn_tfidf_params['ngram_range'] = ngram_range
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/binary/PickleReader.py:3:0
+2	from abc import abstractmethod, ABC
+3	import io, requests, pickle
+4	from requests import Response
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b301-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/binary/PickleReader.py:31:23
+30	                stream.seek(0)
+31	                return pickle.load(stream)
+32	            except Exception as e:
+
+--------------------------------------------------
+>> Issue: [B113:request_without_timeout] Requests call without timeout
+   Severity: Medium   Confidence: Low
+   CWE: CWE-400 (https://cwe.mitre.org/data/definitions/400.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b113_request_without_timeout.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/config/ConfigReader.py:63:41
+62	                if text is None:
+63	                    response: Response = requests.get(url)
+64	                    text: str = response.text
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/dataframe/CsvReader.py:53:12
+52	        except NoCredentialsError:
+53	            assert storage is Storage.S3
+54	            ## Create a new session and read manually:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/dataframe/JsonLinesReader.py:46:12
+45	        except NoCredentialsError:
+46	            assert storage is Storage.S3
+47	            ## Create a new session and read manually:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/reader/dataframe/ParquetReader.py:42:12
+41	        except NoCredentialsError:
+42	            assert storage is Storage.S3
+43	            ## Create a new session and read manually:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/DaskScalableDataFrame.py:107:12
+106	        for sdf in sdfs:
+107	            assert isinstance(sdf, DaskScalableDataFrame)
+108	            ddf_list.append(sdf._data)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/DaskScalableDataFrame.py:393:28
+392	                        if num_chunks is not None:
+393	                            assert length is not None, f'`length` should be set in the upper half of this loop.'
+394	                            num_rows: int = self._stream_update_num_rows_according_to_num_chunks(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/DictScalableDataFrame.py:220:12
+219	        for sdf in sdfs:
+220	            assert isinstance(sdf, DictScalableDataFrame)
+221	            cols.update(sdf.columns_set)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ListOfDictScalableDataFrame.py:252:12
+251	        for sdf in sdfs:
+252	            assert isinstance(sdf, ListOfDictScalableDataFrame)
+253	            list_of_dicts.extend(sdf._data)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/NumpyArrayScalableSeries.py:55:12
+54	                )
+55	            assert isinstance(data, np.ndarray), f'Found type: {type(data)}'
+56	            if np.issubdtype(data.dtype, np.unicode_) and str_to_object:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/NumpyRecordArrayScalableDataFrame.py:111:12
+110	        for df in dfs:
+111	            assert isinstance(df, cls)
+112	            df_list.append(df._data)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/PandasScalableDataFrame.py:96:12
+95	        for sdf in sdfs:
+96	            assert isinstance(sdf, PandasScalableDataFrame)
+97	            df_list.append(sdf._data)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/RecordScalableDataFrame.py:133:12
+132	        for sdf in sdfs:
+133	            assert isinstance(sdf, RecordScalableDataFrame)
+134	            list_of_dicts.append(sdf.raw())
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:110:8
+109	            data: ScalableDataFrame = data.to_frame()
+110	        assert isinstance(data, ScalableDataFrame)
+111	        if layout is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:997:8
+996	            num_batches_per_shard += M
+997	        assert remaining_num_rows < M * S * B
+998	        # assert remaining_num_rows == (N - M*S*B*((new_P//S)-1))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1008:8
+1007	            num_batches_per_shard += num_remaining_complete_columns
+1008	        assert remaining_num_rows < S * B
+1009	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1030:12
+1029	            remaining_num_rows -= final_col_num_rows
+1030	            assert remaining_num_rows == 0
+1031	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1094:16
+1093	            if parallelize is Parallelize.processes:
+1094	                assert map_executor == 'spawn'
+1095	                return ProcessPoolExecutor(max_workers=num_workers)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1097:16
+1096	            elif parallelize is Parallelize.threads:
+1097	                assert map_executor == 'spawn'
+1098	                return ThreadPoolExecutor(max_workers=num_workers)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1185:12
+1184	                raise e
+1185	            assert map_failure == 'drop'
+1186	            return
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableDataFrame.py:1201:12
+1200	                raise e
+1201	            assert map_failure == 'drop'
+1202	            return None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/sdf/ScalableSeries.py:92:8
+91	            data: ScalableSeries = cls.get_subclass(layout)(data=data, **kwargs)
+92	        assert isinstance(data, ScalableSeries)
+93	        if layout is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/Writer.py:221:20
+220	                else:
+221	                    assert len(written_paths) == 1
+222	                    written_path: str = written_paths[0]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/Writer.py:292:20
+291	                else:
+292	                    assert len(written_s3_paths) == 1
+293	                    written_s3_path: str = written_s3_paths[0]
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/binary/PickleWriter.py:2:0
+1	from typing import *
+2	import io, pickle
+3	from abc import abstractmethod, ABC
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/dataframe/CsvWriter.py:77:12
+76	            ## We are writing multiple files to a directory (either in local or remote).
+77	            assert name_function is not None, f'We require a `name_function` when writing to a directory.'
+78	            sdf.to_csv(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/dataframe/JsonLinesWriter.py:72:12
+71	            ## We are writing multiple files to a directory (either in local or remote).
+72	            assert name_function is not None, f'We require a `name_function` when writing to a directory.'
+73	            sdf.to_json(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/dataframe/NpzWriter.py:73:12
+72	            ## We are writing multiple files to a directory (either in local or remote).
+73	            assert name_function is not None, f'We require a `name_function` when writing to a directory.'
+74	            params = self.filtered_params(DaskDataFrame.compute, DaskDataFrame.get_partition, Pandas_to_npz)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/data/writer/dataframe/ParquetWriter.py:71:12
+70	            ## We are writing multiple files to a directory (either in local or remote).
+71	            assert name_function is not None, f'We require a `name_function` when writing to a directory.'
+72	            params = self.filtered_params(Dask_to_parquet, Pandas_to_parquet)
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/algorithm.py:5:0
+4	import numpy as np
+5	import time, traceback, pickle, gc, os, tempfile
+6	from synthesizrr.base.constants import FileFormat, DataLayout, MLType, DataSplit, MLTypeSchema, Storage
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/algorithm.py:266:16
+265	                ## Copy to local cache directory:
+266	                assert cache_dir is not None
+267	                cache_dir.mkdir()
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b301-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/algorithm.py:692:33
+691	        with model_dir.open(file_name=model_params_file_name, mode="rb", tmpdir=tmpdir) as inp:
+692	            model_params: Dict = pickle.load(inp)
+693	            if not isinstance(model_params, dict):
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/chain/Chain.py:5:0
+4	import numpy as np
+5	import time, traceback, pickle, gc, os, json
+6	from synthesizrr.base.util import Registry, MutableParameters, Parameters, set_param_from_alias, is_list_like, as_list, \
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/chain/Chain.py:270:12
+269	        if after is not None:
+270	            assert isinstance(after, ChainExecution)
+271	        tracker: Tracker = Tracker.of(get_default(tracker, 'noop'))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/chain/Chain.py:662:8
+661	        outputs: Dict = chain_exn.outputs
+662	        assert isinstance(outputs, dict)
+663	        outputs['__exn__'] = chain_exn
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/dl/torch/torch_tasks.py:67:16
+66	            else:
+67	                assert required_embeddings == 'multi'
+68	                output: List[Tensor] = self.embed_multi(input, **kwargs)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/AccelerateEvaluator.py:37:16
+36	                    params['model_weights_dtype'] = getattr(torch, params['model_weights_dtype'])
+37	                assert isinstance(params['model_weights_dtype'], torch.dtype)
+38	            return params
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/AccelerateEvaluator.py:187:12
+186	                    raise ValueError(f'For non-HuggingFace PyTorch models, you must specify model_dir for loading.')
+187	            assert isinstance(model_dir, FileMetadata)
+188	            model_dir_path: str = model_dir.path
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/AccelerateEvaluator.py:264:12
+263	            ## Load the model into CPU memory:
+264	            assert cache_dir is not None
+265	            model: Algorithm = Algorithm.of(**{
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/RayEvaluator.py:168:20
+167	                if error_to_raise is None:
+168	                    assert isinstance(macro_batch, ScalableDataFrame) and macro_batch.layout == DataLayout.PANDAS
+169	                    macro_batch_save_file: Optional[FileMetadata] = None  ## Saves a macro batch
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/RayEvaluator.py:541:16
+540	                    )
+541	                assert predictions_destination.format is not None  ## Checked in .evaluate().
+542	
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/RayEvaluator.py:650:43
+649	                    elif load_balancing_strategy is LoadBalancingStrategy.RANDOM:
+650	                        rnd_actor_i: int = random.choice(list(range(0, num_actors_created)))
+651	                        actor_comp: ActorComposite = self.model[rnd_actor_i]
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/evaluator/RayEvaluator.py:675:40
+674	                        ## Select an actor randomly among those with min usage and latest_last_completed_timestamp.
+675	                        actor_id: str = random.choice([
+676	                            actor_id
+677	                            for actor_usage, last_completed_timestamp, actor_id in actor_usages
+678	                            if actor_usage == min_actor_usage \
+679	                               and last_completed_timestamp == latest_last_completed_timestamp
+680	                        ])
+681	                        actor_comp: ActorComposite = only_item([
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/metric.py:2:0
+1	from typing import *
+2	import math, copy, io, pickle
+3	from abc import ABC, abstractmethod
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/metric.py:662:4
+661	) -> str:
+662	    assert isinstance(range, bool)
+663	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:560:8
+559	            progress_bar: Optional[Dict] = None
+560	        assert progress_bar is None or isinstance(progress_bar, dict)
+561	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:709:8
+708	            raise ValueError(f'Cannot iterate over files for data which is in memory')
+709	        assert isinstance(self.data, FileMetadata)
+710	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:776:20
+775	                        raise ValueError(f'Cannot detect any file formats from asset paths: {asset_paths.to_list()}')
+776	                    assert len(asset_formats) == 1 and len(non_existent_asset_paths) == 0
+777	                    ## At least one item in this batch column was non-None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:926:12
+925	        for row in self.iter(num_rows=1, stream_as=DataLayout.LIST_OF_DICT):
+926	            assert isinstance(row, InputOutputDataMixin)
+927	            row.set_layout(DataLayout.RECORD)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:1000:12
+999	        for batch in self.iter(**kwargs):
+1000	            assert isinstance(batch, InputOutputDataMixin)
+1001	            if len(get_fn_args(fn)) == 1:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/mixins.py:1022:12
+1021	        for batch in self.iter(**kwargs):
+1022	            assert isinstance(batch, InputOutputDataMixin)
+1023	            if len(get_fn_args(fn)) == 1:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/dense_retrieval.py:213:16
+212	            for batch in data.iter(**kwargs):
+213	                assert isinstance(batch, Embeddings)
+214	                faiss_idxs: np.ndarray = np.arange(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/dense_retrieval.py:264:16
+263	            for queries_batch in queries.stream(batch_size=index_retrieval_batch_size):
+264	                assert isinstance(queries_batch, ScalableSeries)
+265	                queries_batch_np: np.ndarray = queries_batch.numpy(stack=True)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/dense_retrieval.py:272:16
+271	                )
+272	                assert top_k_distances.shape[0] == top_k_faiss_idxs.shape[0] == len(queries_batch)
+273	                for i in range(len(queries_batch)):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/regression.py:42:8
+41	    def ground_truth_scores(self) -> ScalableSeries:
+42	        assert self.has_ground_truths
+43	        ground_truth_scores_col: str = next(iter(self.data_schema.ground_truths_schema.keys()))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:53:8
+52	        doc_id: str = str(doc_id)
+53	        assert len(doc_id) > 0
+54	        return doc_id
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:113:8
+112	    ) -> BM25IndexStore:
+113	        assert self.class_name == index2.class_name
+114	        dict_keys_to_exclude: List[str] = [
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:325:8
+324	    if documents is not None:
+325	        assert isinstance(documents, RetrievalCorpus)
+326	        kwargs['progress_bar'] = False
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:402:8
+401	            )
+402	        assert isinstance(data, RetrievalCorpus)
+403	        id_col: str = data.data_schema.index_col
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:485:12
+484	        for queries_batch in queries.stream(batch_size=index_retrieval_batch_size):
+485	            assert isinstance(queries_batch, ScalableSeries)
+486	            ranked_results.extend(self._retrieve_batch(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:538:16
+537	            for documents_batch in corpus_gen:
+538	                assert isinstance(documents_batch, RetrievalCorpus)
+539	                index_futs.append(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:645:12
+644	            )
+645	            assert isinstance(documents, RetrievalCorpus)
+646	            index_store_update: BM25IndexStore = _create_index_store(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:717:12
+716	        for documents_batch_i, documents_batch in enumerate(corpus_gen):
+717	            assert isinstance(documents_batch, RetrievalCorpus)
+718	            ## Select in randomized round-robin order:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:736:8
+735	            )
+736	        assert bool(all(accumulate(index_futs, progress_bar=pbar)))
+737	        ## Next steps:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:801:8
+800	            )
+801	        assert len(batch_ranked_results) == len(queries_batch)
+802	        return batch_ranked_results
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:812:8
+811	        ## For a particular query, sort the top-k results across actors.
+812	        assert how in {'max', 'min'}
+813	        query_top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = []
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/sparse_retrieval.py:997:8
+996	        )
+997	        assert len(corpus_random_sample) == total_num_results
+998	        index_col: str = self.corpus.data_schema.index_col
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:133:8
+132	        batch_icl_idxs_in_use: List[Set] = [as_set(batch_idx) for batch_idx in batch.index()]
+133	        assert len(batch_icl_idxs_in_use) == len(batch)
+134	        # print(f'Columns before: {batch.data.columns}')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:259:8
+258	        """
+259	        assert isinstance(self.icl_dataset, ClassificationData)
+260	        assert isinstance(self.icl_entailment_pos_dataset, ClassificationData)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:260:8
+259	        assert isinstance(self.icl_dataset, ClassificationData)
+260	        assert isinstance(self.icl_entailment_pos_dataset, ClassificationData)
+261	        assert isinstance(self.icl_entailment_neg_dataset, ClassificationData)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:261:8
+260	        assert isinstance(self.icl_entailment_pos_dataset, ClassificationData)
+261	        assert isinstance(self.icl_entailment_neg_dataset, ClassificationData)
+262	        ## We want to avoid accidentally "leaking" the answer by selecting an ICL example with the same idx as the
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:265:8
+264	        batch_icl_idxs_in_use: List[Set] = [as_set(batch_idx) for batch_idx in batch.index()]
+265	        assert len(batch_icl_idxs_in_use) == len(batch)
+266	        for shot_i in self.shot_idxs(self.num_shots):  ## 1, 2, 3, ...
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:511:12
+510	            params['min_possible_score']: float = 0.0
+511	            assert 0.0 < params['output_scores_tolerance'] < 1.0
+512	        elif params['output_scores_format'] == 'log-probabilities':
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:515:12
+514	            params['min_possible_score']: float = -inf
+515	            assert 0.0 < params['output_scores_tolerance'] < 1.0
+516	            params['output_scores_tolerance']: float = log(params['output_scores_tolerance'])
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:517:12
+516	            params['output_scores_tolerance']: float = log(params['output_scores_tolerance'])
+517	            assert params['output_scores_tolerance'] < 0.0
+518	        elif params['output_scores_format'] == 'logits':
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:601:12
+600	            generation_params: TextGenerationParams = self.hyperparams.generation_params
+601	            assert isinstance(generation_params, TextGenerationParams)
+602	            assert generated_token_ids.shape == generated_tokens.shape == generated_token_scores.shape
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:602:12
+601	            assert isinstance(generation_params, TextGenerationParams)
+602	            assert generated_token_ids.shape == generated_tokens.shape == generated_token_scores.shape
+603	            batch_size: int = generated_token_ids.shape[0]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:794:8
+793	    def _create_predictions(self, batch: Dataset, predictions: Any, **kwargs) -> TextGenerations:
+794	        assert isinstance(predictions, TextGenerations)
+795	        return predictions
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:832:12
+831	            })
+832	            assert isinstance(self.retriever, Retriever)
+833	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task/text_generation.py:943:8
+942	    def _create_predictions(self, batch: Dataset, predictions: Any, **kwargs) -> TextGenerations:
+943	        assert isinstance(predictions, TextGenerations)
+944	        return predictions
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/task_data.py:107:8
+106	                raise e
+107	        assert isinstance(data_schema, Schema)
+108	        if not cls._allow_empty_features_schema and len(data_schema.features_schema) == 0:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/tracker/AimTracker.py:58:12
+57	            self.repo: Repo = Repo(self.repo_dir, init=True)
+58	            assert isinstance(self.repo, Repo)
+59	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/tracker/LogFileTracker.py:51:8
+50	        log_file.get_dir(return_metadata=True).mkdir()
+51	        assert log_file.storage is Storage.LOCAL_FILE_SYSTEM
+52	        assert not log_file.is_path_valid_dir()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/tracker/LogFileTracker.py:52:8
+51	        assert log_file.storage is Storage.LOCAL_FILE_SYSTEM
+52	        assert not log_file.is_path_valid_dir()
+53	        process_id: int = os.getpid()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/tracker/LogFileTracker.py:65:8
+64	        )
+65	        assert self.logger is not None
+66	        assert self.logger_handler is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/tracker/LogFileTracker.py:66:8
+65	        assert self.logger is not None
+66	        assert self.logger_handler is not None
+67	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/AccelerateTrainer.py:162:12
+161	                    tracker: Tracker = Tracker.of(tracker)
+162	            assert isinstance(tracker, Tracker)
+163	
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:7:0
+6	from types import ModuleType
+7	import time, os, gc, io, pickle, math, copy, pandas as pd, numpy as np, random
+8	import ray
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:146:8
+145	    if isinstance(metric, TabularMetric):
+146	        assert isinstance(metric.value, pd.DataFrame)
+147	        return _RAY_METRIC_IS_DATAFRAME_PREFIX + metric.value.to_json(orient='records')
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b301-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:167:11
+166	    value.seek(0)
+167	    return pickle.load(value)
+168	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:192:12
+191	        for student_metric in trial_metrics[data_split]:
+192	            assert isinstance(student_metric, Metric)
+193	            student_metric_name: str = student_metric.display_name
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:201:16
+200	            else:
+201	                assert student_metrics[student_metric_name]['metric_class'] == type(student_metric)
+202	    student_metrics_stats: Dict[str, Dict[str, Union[int, float]]] = {}
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:870:16
+869	                final_model_results: tune.ResultGrid = results
+870	                assert len(list(final_model_results)) == self.num_models
+871	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:934:20
+933	                    final_model_results: tune.ResultGrid = retry(tuner.fit, retries=2)
+934	                    assert len(list(final_model_results)) == self.num_final_models
+935	                    retrain_timer.stop()
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:1128:64
+1127	                    ## Priority: global K-Fold seed > random seed.
+1128	                    k_fold_seed: int = get_default(k_fold.seed, random.randint(0, int(1e9)))
+1129	                    if k_fold.seed is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:1212:8
+1211	    def _create_tune_config_for_tuning(self, datasets: Datasets, metrics: Optional[Metrics]) -> tune.TuneConfig:
+1212	        assert self.is_n_models_without_tuning() is False
+1213	        num_models: int = self.num_models
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/RayTuneTrainer.py:1446:20
+1445	                if _RAY_KFOLD_CURRENT_FOLD_NAME in hp_iter_num_df.columns:
+1446	                    assert hp_df[_RAY_KFOLD_CURRENT_FOLD_NAME].nunique() == self.k_fold.num_folds
+1447	                    ## Allows for the case where the same set of hyperparams might be repeated multiple times,
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/Trainer.py:194:8
+193	            params['AlgorithmClass']: Type[Algorithm] = Algorithm.get_subclass((params['task'], AlgorithmClass))
+194	        assert issubclass(params['AlgorithmClass'], Algorithm)
+195	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/Trainer.py:305:12
+304	            load_model: FileMetadata = FileMetadata.of(load_model)
+305	            assert isinstance(load_model, FileMetadata)
+306	            if load_model.is_path_valid_dir() is False:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/Trainer.py:317:12
+316	            save_model: FileMetadata = FileMetadata.of(save_model)
+317	            assert isinstance(save_model, FileMetadata)
+318	            if save_model.is_path_valid_dir() is False:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/framework/trainer/Trainer.py:369:16
+368	            for dataset_metric in dataset_metrics:
+369	                assert isinstance(dataset_metric, Metric)
+370	                dataset_metrics_unique[dataset_metric.display_name] = dataset_metric
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/classification_metrics.py:599:8
+598	            self._labelspace = data.labelspace
+599	        assert self._labelspace == data.labelspace
+600	        for lb in self._labelspace:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/classification_metrics.py:652:8
+651	            self._labelspace = data.labelspace
+652	        assert self._labelspace == data.labelspace
+653	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/classification_metrics.py:656:8
+655	            self._idx_col_name = data.data_schema.index_col
+656	        assert self._idx_col_name == data.data_schema.index_col
+657	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/classification_metrics.py:660:8
+659	            self._gt_col_name = data.ground_truth_label_col_name
+660	        assert self._gt_col_name == data.ground_truth_label_col_name
+661	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:345:8
+344	        )
+345	        assert isinstance(statement_extraction_gens, NextTokens)
+346	        assert len(statement_extraction_gens) == len(rag_gens)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:346:8
+345	        assert isinstance(statement_extraction_gens, NextTokens)
+346	        assert len(statement_extraction_gens) == len(rag_gens)
+347	        statement_extraction_gens.set_layout(DataLayout.PANDAS)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:465:8
+464	        )
+465	        assert isinstance(statement_verification_gens, NextTokens)
+466	        assert len(statement_verification_gens) == len(rag_gens_with_statements_flattened)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:466:8
+465	        assert isinstance(statement_verification_gens, NextTokens)
+466	        assert len(statement_verification_gens) == len(rag_gens_with_statements_flattened)
+467	        statement_verification_gens.set_layout(DataLayout.PANDAS)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:727:8
+726	        )
+727	        assert isinstance(relevant_context_extraction, NextTokens)
+728	        assert len(relevant_context_extraction) == len(rag_gens)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:728:8
+727	        assert isinstance(relevant_context_extraction, NextTokens)
+728	        assert len(relevant_context_extraction) == len(rag_gens)
+729	        relevant_context_extraction.set_layout(DataLayout.PANDAS)
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:951:44
+950	                if settings.get('device_id') is not None:
+951	                    settings['device_id'] = random.choice(EnvUtil.cuda_visible_devices())
+952	                clear_device_cache()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:1393:8
+1392	            clf_dataset: ClassificationData = data
+1393	        assert isinstance(clf_dataset, ClassificationData)
+1394	        clf_dataset: ClassificationData = clf_dataset.read()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:1622:8
+1621	        )
+1622	        assert isinstance(final_model_results, tune.ResultGrid)
+1623	        if final_model_results.num_errors > 0:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/metric/text_generation_metrics.py:1636:12
+1635	        if self.params.hpo:
+1636	            assert isinstance(tune_results, tune.ResultGrid)
+1637	            tune_metrics: pd.DataFrame = tune_trainer.get_detailed_metrics(tune_results)
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:2:0
+1	from typing import *
+2	import io, random, re, math, os, time, boto3, botocore, fnmatch, pickle
+3	from urllib.parse import urlparse, ParseResult
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b301-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:232:22
+231	        pickled_data = cls.stream_s3_object(s3_path, retry=retry).read()
+232	        loaded_data = pickle.loads(pickled_data)
+233	        if loaded_data is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:324:12
+323	            )
+324	            assert cls.s3_object_exists(destination_s3_path), f'Could not find file {destination_s3_path} after copying'
+325	            return True
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:372:12
+371	            s3 = boto3.resource('s3')
+372	            assert cls.s3_object_exists(source_s3_path), f'Could not find file {source_s3_path} to copy'
+373	            ## Ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.download_file
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:418:23
+417	                return True
+418	            time.sleep(random.randint(0, 30000) / 1000)  ## Wait randomly between 0 and 30 seconds to acquire locks.
+419	            lock_file: str = os.path.join(destination_local_dir, 'litmus-download.lock')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:459:12
+458	            s3 = boto3.resource('s3')
+459	            assert cls.s3_object_exists(source_s3_path)
+460	            ## Ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.copy
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/aws/s3.py:468:12
+467	            )
+468	            assert cls.s3_object_exists(destination_s3_path), f'Could not find file {destination_s3_path} after copying'
+469	            return True
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:794:4
+793	) -> str:
+794	    assert isinstance(daemons, dict)
+795	    assert isinstance(wait, (int, float)) and wait >= 0.0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:795:4
+794	    assert isinstance(daemons, dict)
+795	    assert isinstance(wait, (int, float)) and wait >= 0.0
+796	    if daemon_id is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:803:4
+802	            daemon_id: str = dt.strftime('%Y-%m-%d %H:%M:%S.%f').strip()
+803	    assert isinstance(daemon_id, str) and len(daemon_id) > 0
+804	    assert daemon_id not in daemons, f'Daemon with id "{daemon_id}" already exists.'
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:804:4
+803	    assert isinstance(daemon_id, str) and len(daemon_id) > 0
+804	    assert daemon_id not in daemons, f'Daemon with id "{daemon_id}" already exists.'
+805	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:817:4
+816	def stop_daemon(daemon_id: str, daemons: Dict[str, List[bool]] = _DAEMONS) -> bool:
+817	    assert isinstance(daemons, dict)
+818	    assert isinstance(daemon_id, str) and len(daemon_id) > 0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:818:4
+817	    assert isinstance(daemons, dict)
+818	    assert isinstance(daemon_id, str) and len(daemon_id) > 0
+819	    daemon_sentinel: List[bool] = daemons.pop(daemon_id, [False])
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/concurrency.py:820:4
+819	    daemon_sentinel: List[bool] = daemons.pop(daemon_id, [False])
+820	    assert len(daemon_sentinel) == 1
+821	    return daemon_sentinel.pop()
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/filesystem.py:2:0
+1	from typing import *
+2	import io, json, yaml, os, errno, sys, glob, pathlib, math, copy, time, shutil, pickle
+3	from synthesizrr.base.util.language import as_list, is_list_like, format_exception_msg, remove_values
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/filesystem.py:205:8
+204	        path: str = cls.expand_dir(path)
+205	        assert cls.exists(path), f'Path {path} does not exist.'
+206	        return round(os.path.getmtime(path), decimals)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/filesystem.py:211:8
+210	        path: str = cls.expand_dir(path)
+211	        assert cls.exists(path), f'Path {path} does not exist.'
+212	        return os.path.getmtime(path)
+
+--------------------------------------------------
+>> Issue: [B301:blacklist] Pickle and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue.
+   Severity: Medium   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b301-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/filesystem.py:281:23
+280	            with io.open(path, 'rb') as inp:
+281	                data = pickle.load(inp)
+282	                assert data is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/filesystem.py:282:16
+281	                data = pickle.load(inp)
+282	                assert data is not None
+283	                return data
+
+--------------------------------------------------
+>> Issue: [B310:blacklist] Audit url open for permitted schemes. Allowing use of file:/ or custom schemes is often unexpected.
+   Severity: Medium   Confidence: High
+   CWE: CWE-22 (https://cwe.mitre.org/data/definitions/22.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b310-urllib-urlopen
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/jupyter.py:65:17
+64	            # Use a timeout in case this is a stale entry.
+65	            with urllib.request.urlopen(url, timeout=0.5) as req:
+66	                return json.load(req)
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b110_try_except_pass.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/jupyter.py:83:12
+82	                        return srv, PurePath(sess['notebook']['path'])
+83	            except Exception:
+84	                pass  # There may be stale entries in the runtime directory
+85	        return None, None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:115:8
+114	    for x in args:
+115	        assert x in {True, False}
+116	        if not x:  ## Check for falsy values
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:123:8
+122	    for x in args:
+123	        assert x in {True, False}
+124	        if x:  ## Check for truthy values
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:192:4
+191	        remove: Set[str] = set(remove)
+192	    assert isinstance(remove, (list, tuple, set))
+193	    if len(remove) == 0:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:345:8
+344	        params_str: str = call_str.replace(f'{name}(', '')
+345	        assert params_str.endswith(')')
+346	        params_str: str = params_str[:-1]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:640:4
+639	        return True
+640	    assert isinstance(y, type) or (isinstance(y, (list, tuple)) and np.all([isinstance(z, type) for z in y]))
+641	    if (isinstance(y, type) and isinstance(x, y)) or (isinstance(y, list) and np.any([isinstance(x, z) for z in y])):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:660:4
+659	        return False
+660	    assert isinstance(x, type)
+661	    assert isinstance(y, type) or (isinstance(y, list) and np.all([isinstance(z, type) for z in y]))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:661:4
+660	    assert isinstance(x, type)
+661	    assert isinstance(y, type) or (isinstance(y, list) and np.all([isinstance(z, type) for z in y]))
+662	    if (isinstance(y, type) and issubclass(x, y)) or (isinstance(y, list) and np.any([issubclass(x, z) for z in y])):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:757:4
+756	    """
+757	    assert error in {"raise", "warn", "ignore"}
+758	    names: Optional[Set[str]] = set(names)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1065:4
+1064	def assert_not_empty_list(l: List):
+1065	    assert is_not_empty_list(l)
+1066	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1069:4
+1068	def assert_not_empty_list_like(l: ListOrTuple, error_message=''):
+1069	    assert is_not_empty_list_like(l), error_message
+1070	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1185:4
+1184	def get_subset(small_list: ListOrTuple, big_list: ListOrTuple) -> Set:
+1185	    assert is_list_like(small_list)
+1186	    assert is_list_like(big_list)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1186:4
+1185	    assert is_list_like(small_list)
+1186	    assert is_list_like(big_list)
+1187	    return set.intersection(set(small_list), set(big_list))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1264:4
+1263	        d = {}
+1264	    assert isinstance(d, dict)
+1265	    if default_params is None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1267:4
+1266	        return d
+1267	    assert isinstance(default_params, dict)
+1268	    for k, v in default_params.items():
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1284:4
+1283	) -> List[Tuple]:
+1284	    assert by in {'key', 'value'}
+1285	    if order is not None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1287:8
+1286	        order: List = as_list(order)
+1287	        assert by == 'key'
+1288	        out_d: Dict = {}
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1310:4
+1309	) -> Any:
+1310	    assert how in {'max', 'min'}
+1311	    sorted_items: List[Tuple] = sorted_dict(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1390:4
+1389	        return {}
+1390	    assert isinstance(AutoEnumClass, AutoEnum.__class__)
+1391	    d = AutoEnumClass.convert_keys(d)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1423:4
+1422	def assert_not_empty_dict(d: Dict):
+1423	    assert is_not_empty_dict(d)
+1424	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1607:4
+1606	    ## Ref: https://datascience.stackexchange.com/a/16801/35826
+1607	    assert isinstance(df, PandasDataFrame)
+1608	    return (~df.isna()).sum(axis=1)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1612:4
+1611	def get_max_num_non_null_columns_per_row(df: PandasDataFrame) -> int:
+1612	    assert isinstance(df, PandasDataFrame)
+1613	    return get_num_non_null_columns_per_row(df).max()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1665:4
+1664	        data: PandasDataFrame = pd.DataFrame(data)
+1665	    assert isinstance(data, PandasDataFrame)
+1666	    return data
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1683:4
+1682	) -> Union[List, Set, Tuple]:
+1683	    assert output_type in {list, set, tuple}
+1684	    if not is_list_or_set_like(l):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1697:4
+1696	) -> Union[List, Tuple, Set, Any]:
+1697	    assert outer_type in {list, set, tuple}
+1698	    assert inner_type in {list, set, tuple}
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1698:4
+1697	    assert outer_type in {list, set, tuple}
+1698	    assert inner_type in {list, set, tuple}
+1699	    if not is_list_or_set_like(l):
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1735:31
+1734	) -> Optional[Any]:
+1735	    py_random: random.Random = random.Random(seed)
+1736	    if (is_list_like(struct) or is_set_like(struct)) and len(struct) > 0:
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1750:31
+1749	def any_key(d: Dict, *, seed: Optional[int] = None, raise_error: bool = True) -> Optional[Any]:
+1750	    py_random: random.Random = random.Random(seed)
+1751	    if is_not_empty_dict(d):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1846:4
+1845	    """Inclusive range, useful for coding up math notation."""
+1846	    assert isinstance(low, (int, float)) and isinstance(high, (int, float)) and isinstance(step, (int, float))
+1847	    out: List[float] = [
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1862:4
+1861	) -> bool:
+1862	    assert isinstance(l, (list, tuple, np.ndarray, pd.Series, pd.DataFrame))
+1863	    assert idx >= 0, f'Can only check validity of non-negative indexes'
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1863:4
+1862	    assert isinstance(l, (list, tuple, np.ndarray, pd.Series, pd.DataFrame))
+1863	    assert idx >= 0, f'Can only check validity of non-negative indexes'
+1864	    if len(l) == 0:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1875:4
+1874	) -> Generator[List[Any], None, None]:
+1875	    assert isinstance(batch_size, int) and batch_size > 0
+1876	    if is_int_in_floats_clothing(struct):
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1920:16
+1919	    np_random = np.random.RandomState(seed)
+1920	    py_random = random.Random(seed)
+1921	    if not is_list_like(data):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1955:4
+1954	def values_dist(vals: Union[List, Tuple, np.ndarray, pd.Series]) -> pd.Series:
+1955	    assert isinstance(vals, (list, tuple, np.ndarray, pd.Series))
+1956	    val_counts: pd.Series = pd.Series(Counter(vals))  ## Includes nan and None as keys.
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1976:4
+1975	        target_prob_dist: pd.Series = target
+1976	    assert isinstance(target_prob_dist, pd.Series)
+1977	    assert abs(float(target_prob_dist.sum()) - 1.0) <= 1e-2  ## Sum of probs should be exactly or very close to 1.
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1977:4
+1976	    assert isinstance(target_prob_dist, pd.Series)
+1977	    assert abs(float(target_prob_dist.sum()) - 1.0) <= 1e-2  ## Sum of probs should be exactly or very close to 1.
+1978	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:1979:4
+1978	
+1979	    assert isinstance(source, (list, tuple, np.ndarray, pd.Series))
+1980	    source_vc: pd.Series = pd.Series(Counter(source))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2014:8
+2013	        probabilities: np.ndarray = np.array(probabilities)
+2014	        assert is_numpy_float_array(probabilities)
+2015	    prob_sum: float = float(probabilities.sum())
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2038:4
+2037	    rnd_idxs: List[int] = list(range(len(struct)))
+2038	    random.Random(seed).shuffle(rnd_idxs)
+2039	    for rnd_idx in rnd_idxs:
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2044:10
+2043	def random_cartesian_product(*lists, seed: Optional[int] = None, n: int):
+2044	    rnd = random.Random(seed)
+2045	    cartesian_idxs: Set[Tuple[int, ...]] = set()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2071:4
+2070	        return max(d, key=d.get)
+2071	    assert is_list_like(d)
+2072	    return max([(i, x) for (i, x) in enumerate(d)], key=lambda x: x[1])[0]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2081:4
+2080	        return min(d, key=d.get)
+2081	    assert is_list_like(d)
+2082	    return min([(i, x) for (i, x) in enumerate(d)], key=lambda x: x[1])[0]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2094:4
+2093	    """Efficiently gets the top-k elements from a numpy array."""
+2094	    assert isinstance(k, int) and k > 0
+2095	    ## np.argpartition creates a new array with the top-k/bottom-k scores in the head/tail k elements,
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2144:4
+2143	def clip(low: Union[int, float], val: Union[int, float], high: Union[int, float]):
+2144	    assert isinstance(low, (int, float, np.integer, np.float_))
+2145	    assert isinstance(high, (int, float, np.integer, np.float_))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2145:4
+2144	    assert isinstance(low, (int, float, np.integer, np.float_))
+2145	    assert isinstance(high, (int, float, np.integer, np.float_))
+2146	    assert isinstance(val, (int, float, np.integer, np.float_))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2146:4
+2145	    assert isinstance(high, (int, float, np.integer, np.float_))
+2146	    assert isinstance(val, (int, float, np.integer, np.float_))
+2147	    assert low <= high
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2147:4
+2146	    assert isinstance(val, (int, float, np.integer, np.float_))
+2147	    assert low <= high
+2148	    return max(low, min(val, high))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2152:4
+2151	def pad_interval(low: Union[int, float], high: Union[int, float], pad: float) -> Tuple[float, float]:
+2152	    assert isinstance(low, (int, float, np.integer, np.float_))
+2153	    assert isinstance(high, (int, float, np.integer, np.float_))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2153:4
+2152	    assert isinstance(low, (int, float, np.integer, np.float_))
+2153	    assert isinstance(high, (int, float, np.integer, np.float_))
+2154	    assert isinstance(pad, (int, float, np.integer, np.float_)) and 0.0 <= pad <= 1.0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2154:4
+2153	    assert isinstance(high, (int, float, np.integer, np.float_))
+2154	    assert isinstance(pad, (int, float, np.integer, np.float_)) and 0.0 <= pad <= 1.0
+2155	    assert low <= high
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2155:4
+2154	    assert isinstance(pad, (int, float, np.integer, np.float_)) and 0.0 <= pad <= 1.0
+2155	    assert low <= high
+2156	    width: float = float(high) - float(low)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2375:12
+2374	            registered_names: Set[str] = set(registered.keys())
+2375	            assert len(registered_names) > 0, f'Invalid state: key {k} is registered to an empty dict'
+2376	            if subclass_name in registered_names and cls._allow_subclass_override is False:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2382:16
+2381	            elif subclass_name not in registered_names and cls._allow_multiple_subclasses is False:
+2382	                assert len(registered_names) == 1, \
+2383	                    f'Invalid state: _allow_multiple_subclasses is False but we have multiple subclasses registered ' \
+2384	                    f'against key {k}'
+2385	                raise KeyError(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2843:4
+2842	            final_columns.append(col)
+2843	    assert set(final_columns) == set(df_columns)
+2844	    return df[final_columns]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:2947:8
+2946	                }
+2947	        assert isinstance(progress_bar, dict)
+2948	        return ProgressBar(**progress_bar)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3147:4
+3146	def is_sorted(l: Union[List[_Comparable], Tuple[_Comparable, ...]]) -> bool:
+3147	    assert isinstance(l, (list, tuple))
+3148	    length = len(l)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3149:4
+3148	    length = len(l)
+3149	    assert length > 0
+3150	    if length == 1:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3201:8
+3200	    if order is not None:
+3201	        assert len(plots_list) > 0
+3202	        assert len(order) == len(plots_list)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3202:8
+3201	        assert len(plots_list) > 0
+3202	        assert len(order) == len(plots_list)
+3203	        assert len(set(p[0] for p in plots_list)) == len(order)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3203:8
+3202	        assert len(order) == len(plots_list)
+3203	        assert len(set(p[0] for p in plots_list)) == len(order)
+3204	        ordered_plots_list: List[Any] = []
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/language.py:3218:12
+3217	        if isinstance(plot, tuple):
+3218	            assert len(plot) == 2
+3219	            plot = plot[1]
+
+--------------------------------------------------
+>> Issue: [B113:request_without_timeout] Requests call without timeout
+   Severity: Medium   Confidence: Low
+   CWE: CWE-400 (https://cwe.mitre.org/data/definitions/400.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b113_request_without_timeout.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/notify.py:155:19
+154	            msg = '/md\n\n' + msg
+155	        response = requests.post(url=self.webhook, json={"Content": msg})
+156	        return str(response.status_code).startswith('2')
+
+--------------------------------------------------
+>> Issue: [B113:request_without_timeout] Requests call without timeout
+   Severity: Medium   Confidence: Low
+   CWE: CWE-400 (https://cwe.mitre.org/data/definitions/400.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b113_request_without_timeout.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/notify.py:173:19
+172	        msg: str = str(msg)
+173	        response = requests.post(self.webhook, json={"content": msg}, headers={'Content-Type': 'application/json'})
+174	        return str(response.status_code).startswith('2')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/schema.py:293:8
+292	        )
+293	        assert inferred_schema.columns_set == set(schema.keys())
+294	        return inferred_schema
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/schema.py:386:8
+385	        inferred_schema: Schema = Schema(**schema)
+386	        assert inferred_schema.columns_set <= columns_set
+387	        return inferred_schema
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:203:8
+202	    def assert_not_empty(cls, string: Any, error_message: str = ''):
+203	        assert cls.is_not_empty(string), error_message
+204	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:207:8
+206	    def assert_not_empty_bytes(cls, string: Any, error_message: str = ''):
+207	        assert cls.is_not_empty_str_or_bytes(string), error_message
+208	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:211:8
+210	    def assert_not_empty_str_or_bytes(cls, string: Any, error_message: str = ''):
+211	        assert cls.is_not_empty_str_or_bytes(string), error_message
+212	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:284:8
+283	    def convert_str_to_type(cls, val: str, expected_type: Type) -> Any:
+284	        assert isinstance(expected_type, type)
+285	        if isinstance(val, expected_type):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:344:12
+343	        if unit is not None:
+344	            assert isinstance(unit, str)
+345	            unit = unit.upper()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:346:12
+345	            unit = unit.upper()
+346	            assert unit in cls.FILE_SIZE_UNITS
+347	            return sizes[unit]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:427:12
+426	        if unit is not None:
+427	            assert isinstance(unit, str)
+428	            unit = unit.lower()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:429:12
+428	            unit = unit.lower()
+429	            assert unit in TIME_UNITS
+430	            return times[unit]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:443:8
+442	            return '0'
+443	        assert abs(n) > 0
+444	        if 0 < abs(n) < 1:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:481:8
+480	    ) -> Union[Dict, float]:
+481	        assert n >= 0
+482	        N_UNITS = {
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:507:12
+506	        if unit is not None:
+507	            assert isinstance(unit, str)
+508	            unit = unit.lower()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:509:12
+508	            unit = unit.lower()
+509	            assert unit in N_UNITS
+510	            return numbers[unit]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:527:8
+526	    def get_num_zeros_to_pad(cls, max_i: int) -> int:
+527	        assert isinstance(max_i, int) and max_i >= 1
+528	        num_zeros = math.ceil(math.log10(max_i))  ## Ref: https://stackoverflow.com/a/51837162/4900327
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:535:8
+534	    def pad_zeros(cls, i: int, max_i: int = int(1e12)) -> str:
+535	        assert isinstance(i, int)
+536	        assert i >= 0
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:536:8
+535	        assert isinstance(i, int)
+536	        assert i >= 0
+537	        assert isinstance(max_i, int)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:537:8
+536	        assert i >= 0
+537	        assert isinstance(max_i, int)
+538	        assert max_i >= i, f'Expected max_i to be >= current i; found max_i={max_i}, i={i}'
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:538:8
+537	        assert isinstance(max_i, int)
+538	        assert max_i >= i, f'Expected max_i to be >= current i; found max_i={max_i}, i={i}'
+539	        num_zeros: int = cls.get_num_zeros_to_pad(max_i)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:627:8
+626	            min_num_chars, max_num_chars = length
+627	        assert min_num_chars <= max_num_chars, \
+628	            f'Must have min_num_chars ({min_num_chars}) <= max_num_chars ({max_num_chars})'
+629	        if spaces_prob is not None:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:668:8
+667	        cartesian_product_parts: List[List[str]] = []
+668	        assert len(order) > 0
+669	        for order_part in order:
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_calls.html#b311-random
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:689:14
+688	    def __random_cartesian_product(*lists, seed: Optional[int] = None, n: int):
+689	        rnd = random.Random(seed)
+690	        cartesian_idxs: Set[Tuple[int, ...]] = set()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:760:8
+759	    def convert_integer_to_base_n_str(cls, integer: int, base: int) -> str:
+760	        assert isinstance(integer, int)
+761	        assert isinstance(base, int) and base in cls.BASE_CONVERTER_MAP, \
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:761:8
+760	        assert isinstance(integer, int)
+761	        assert isinstance(base, int) and base in cls.BASE_CONVERTER_MAP, \
+762	            f'Param `base` must be an integer in {list(cls.BASE_CONVERTER_MAP.keys())}; found: {base}'
+763	        return cls.BASE_CONVERTER_MAP[base].encode(integer)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/string.py:801:12
+800	        if not isinstance(strings_to_match, list) and not isinstance(strings_to_match, tuple):
+801	            assert isinstance(strings_to_match, str), f'Input must be of a string or list of strings; found type ' \
+802	                                                      f'{type(strings_to_match)} with value: {strings_to_match}'
+803	            strings_to_match: List[str] = [strings_to_match]
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/base/util/struct.py:100:8
+99	
+100	        assert is_list_like(nodes)
+101	        set_param_from_alias(params=kwargs, param='progress_bar', alias=['progress', 'pbar'], default=True)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:82:4
+81	        return num_samples_per_label
+82	    assert isinstance(num_samples_per_label, int)
+83	    num_samples_per_label: Dict[str, conint(ge=1)] = {
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:87:4
+86	    }
+87	    assert isinstance(num_samples_per_label, dict)
+88	    return num_samples_per_label
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:210:12
+209	        else:
+210	            assert batch_size >= 4
+211	            ## For smaller models like TinyBERT, vary the batch size steps.
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:538:8
+537	        icl_and_prompt_template_dict: Dict[str, str] = ICL_AND_PROMPT_TEMPLATE_DICT[(self, expt)]
+538	        assert 'icl_template' in icl_and_prompt_template_dict
+539	        assert 'prompt_template' in icl_and_prompt_template_dict
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:539:8
+538	        assert 'icl_template' in icl_and_prompt_template_dict
+539	        assert 'prompt_template' in icl_and_prompt_template_dict
+540	        assert 'claude_replacements' in icl_and_prompt_template_dict
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:540:8
+539	        assert 'prompt_template' in icl_and_prompt_template_dict
+540	        assert 'claude_replacements' in icl_and_prompt_template_dict
+541	        icl_template: str = icl_and_prompt_template_dict['icl_template']
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:546:16
+545	            for repl in as_list(claude_replacements):
+546	                assert icl_template.find(repl[0]) >= 0
+547	                icl_template: str = icl_template.replace(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:551:16
+550	                )
+551	                assert prompt_template.find(repl[0]) >= 0
+552	                prompt_template: str = prompt_template.replace(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:556:8
+555	                )
+556	        assert '{{icl[example_text]}}' in icl_template
+557	        assert '{{icl_examples}}' in prompt_template
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:557:8
+556	        assert '{{icl[example_text]}}' in icl_template
+557	        assert '{{icl_examples}}' in prompt_template
+558	        if expt is Experiment.SynthesizRR:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:559:12
+558	        if expt is Experiment.SynthesizRR:
+559	            assert '{{icl[retrieved_context]}}' in icl_template
+560	            assert '{{retrieved_context}}' in prompt_template
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:560:12
+559	            assert '{{icl[retrieved_context]}}' in icl_template
+560	            assert '{{retrieved_context}}' in prompt_template
+561	        return dict(
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1129:8
+1128	        sentence_end_token_id: int = tokenizer.get_vocab()[sentence_end]
+1129	        assert sentence_end == tokenizer.decode(sentence_end_token_id)
+1130	        token_ids: List[int] = tokenizer.encode(text, add_special_tokens=False)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1269:8
+1268	        from synthesizrr.base.metric.classification_metrics import DatasetCartography
+1269	        assert isinstance(metric, TextGenerationStudent)
+1270	        if str_normalize(metric.params.algorithm) == str_normalize('pytorch'):
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1280:12
+1279	            student_metrics: Metrics = metric.params.metrics
+1280	            assert isinstance(student_metrics, Metrics)
+1281	            for _train_student_metric in student_metrics[DataSplit.TRAIN]:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1466:12
+1465	        if student_hpo_validation_set == 'seed':
+1466	            assert val_set is not None
+1467	            validation_dataset: Dataset = val_set
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1476:12
+1475	            validation_dataset: Optional[Dataset] = None
+1476	            assert val_frac is not None
+1477	        else:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/common.py:1675:4
+1674	    replacement: Tuple[str, str] = ICL_AND_PROMPT_TEMPLATE_DICT[(dataset_name, expt)]['claude_replacements'][1]
+1675	    assert replacement[0] in {
+1676	        'News Article:',
+1677	        'Rewritten Article:',
+1678	        'Summary:',
+1679	        'Review:',
+1680	        'Product Question:',
+1681	        'Headline:',
+1682	    }
+1683	    if model_name.is_claude():
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/data.py:253:12
+252	        for SynthesizRRDatasetSubclass in cls.subclasses():
+253	            assert issubclass(SynthesizRRDatasetSubclass, SynthesizRRDataset)
+254	            SynthesizRRDatasetSubclass.setup()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/data.py:614:8
+613	        reviews = reviews.query(f'product_category in {list(attrprompt_cats)}').reset_index(drop=True)
+614	        assert set(reviews['product_category']) == attrprompt_cats
+615	        assert reviews['unique_id'].nunique() == len(reviews)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/data.py:615:8
+614	        assert set(reviews['product_category']) == attrprompt_cats
+615	        assert reviews['unique_id'].nunique() == len(reviews)
+616	        # reviews['product_category'].value_counts()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:156:8
+155	    if expt is Experiment.SynthesizRR:
+156	        assert corpus is not None
+157	        assert retriever is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:157:8
+156	        assert corpus is not None
+157	        assert retriever is not None
+158	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:160:8
+159	    if expt is not Experiment.Gold:
+160	        assert model_name is not None
+161	        assert num_samples_per_label is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:161:8
+160	        assert model_name is not None
+161	        assert num_samples_per_label is not None
+162	        assert seed_type is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:162:8
+161	        assert num_samples_per_label is not None
+162	        assert seed_type is not None
+163	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/driver.py:167:12
+166	            llm_num_gpus: int = model_name.llm_resources_per_model().get('gpu', 0)
+167	            assert llm_num_gpus >= 0
+168	            if llm_num_gpus > 0:
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:3:0
+2	from abc import ABC, abstractmethod
+3	import types, time, traceback, pickle, gc, os, json, numpy as np, math
+4	import pandas as pd
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:527:12
+526	            check_isinstance(corpus_embeddings_dir, FileMetadata)
+527	            assert embedder_params is not None
+528	            assert embedder_ndim is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:528:12
+527	            assert embedder_params is not None
+528	            assert embedder_ndim is not None
+529	            ## Dense retriever:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:753:8
+752	    ) -> Tuple[ClassificationData, TextInputs]:
+753	        assert len(retr_icl_distance_range) == 2
+754	        assert len(synthesizrr_distance_range) == 2
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:754:8
+753	        assert len(retr_icl_distance_range) == 2
+754	        assert len(synthesizrr_distance_range) == 2
+755	        assert len(retr_icl_token_range) == 2
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:755:8
+754	        assert len(synthesizrr_distance_range) == 2
+755	        assert len(retr_icl_token_range) == 2
+756	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:758:12
+757	        if retriever is Retriever.Random:
+758	            assert icl_type in {'curated', 'seed'}
+759	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:901:8
+900	        tokenizer: Any = model_name.tokenizer()
+901	        assert ex[label_col] == label_text
+902	        added_to_icl_dataset: bool = False
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:939:12
+938	
+939	            assert ex.get(distance_metric_top_k_col(top_k=top_k)) is not None
+940	            assert ex.get(distance_top_k_col(top_k=top_k)) is not None
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:940:12
+939	            assert ex.get(distance_metric_top_k_col(top_k=top_k)) is not None
+940	            assert ex.get(distance_top_k_col(top_k=top_k)) is not None
+941	            if icl_type == 'retrieved':
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/generation.py:1511:8
+1510	        )
+1511	        assert isinstance(text_gens, TextGenerationsPredictionsBase)
+1512	        self.info(
+
+--------------------------------------------------
+>> Issue: [B403:blacklist] Consider possible security implications associated with pickle module.
+   Severity: Low   Confidence: High
+   CWE: CWE-502 (https://cwe.mitre.org/data/definitions/502.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/blacklists/blacklist_imports.html#b403-import-pickle
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:3:0
+2	from abc import ABC, abstractmethod
+3	import types, time, traceback, pickle, gc, os, json, numpy as np, math
+4	import pandas as pd
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:85:8
+84	    ) -> TextGenerationsPredictionsBase:
+85	        assert text_gens_parser is not None
+86	        text_gens_data: List[Dict] = []
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:132:8
+131	        text_gens_expanded_with_refs.data_schema.features_schema[references_col] = MLType.TEXT
+132	        assert isinstance(text_gens_expanded_with_refs, TextGenerationsPredictionsBase)
+133	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:286:20
+285	                    ## Apply filters:
+286	                    assert len(df_filters) > 0
+287	                    return cart_df.query(' and '.join(df_filters)).reset_index(drop=True)
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:518:8
+517	                metrics_labels_to_evaluate.extend(list(label_verbalizer.keys()))
+518	        assert len(metrics_labels_to_evaluate) > 0
+519	        self.info(f'Evaluating labels: {metrics_labels_to_evaluate}')
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:1251:12
+1250	        else:
+1251	            assert label_text in label_verbalizer
+1252	            assert label_text in dataset_name.label_verbalizer()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:1252:12
+1251	            assert label_text in label_verbalizer
+1252	            assert label_text in dataset_name.label_verbalizer()
+1253	            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:1625:12
+1624	        else:
+1625	            assert label_text in label_verbalizer
+1626	            assert label_text in dataset_name.label_verbalizer()
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.7.8/plugins/b101_assert_used.html
+   Location: /Users/adivekar/workplace/synthesizrr/src/synthesizrr/expt/metrics.py:1626:12
+1625	            assert label_text in label_verbalizer
+1626	            assert label_text in dataset_name.label_verbalizer()
+1627	            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 43248
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 287
+		Medium: 10
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 4
+		Medium: 0
+		High: 293
+Files skipped (0):
