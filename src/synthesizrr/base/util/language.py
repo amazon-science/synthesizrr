@@ -1111,6 +1111,38 @@ def as_list(l) -> List:
     return [l]
 
 
+def list_pop_inplace(l: List, *, pop_condition: Callable) -> List:
+    assert isinstance(l, list)  ## Needs to be a mutable
+    ## Iterate backwards to preserve indexes while iterating
+    for i in range(len(l) - 1, -1, -1):  # Iterate backwards
+        if pop_condition(l[i]):
+            l.pop(i)  ## Remove the item inplace
+    return l
+
+
+def set_union(*args) -> Set:
+    _union: Set = set()
+    for s in args:
+        if isinstance(s, (pd.Series, np.ndarray)):
+            s: List = s.tolist()
+        s: Set = set(s)
+        _union: Set = _union.union(s)
+    return _union
+
+
+def set_intersection(*args) -> Set:
+    _intersection: Optional[Set] = None
+    for s in args:
+        if isinstance(s, (pd.Series, np.ndarray)):
+            s: List = s.tolist()
+        s: Set = set(s)
+        if _intersection is None:
+            _intersection: Set = s
+        else:
+            _intersection: Set = _intersection.intersection(s)
+    return _intersection
+
+
 def filter_string_list(l: List[str], pattern: str, ignorecase: bool = False) -> List[str]:
     """
     Filter a list of strings based on an exact match to a regex pattern. Leaves non-string items untouched.
@@ -1201,7 +1233,7 @@ def as_tuple(l) -> Tuple:
 
 
 ## ======================== Set utils ======================== ##
-def is_set_like(l: Union[Set, frozenset]) -> bool:
+def is_set_like(l: Any) -> bool:
     return isinstance(l, (set, frozenset, KeysView))
 
 
@@ -1945,7 +1977,7 @@ def mean(vals):
 
 
 def random_sample(
-        data: Union[List, Tuple, np.ndarray],
+        data: Union[List, Tuple, Set, np.ndarray],
         n: SampleSizeType,
         *,
         replacement: bool = False,
@@ -1961,6 +1993,8 @@ def random_sample(
     """
     np_random = np.random.RandomState(seed)
     py_random = random.Random(seed)
+    if is_set_like(data):
+        data: List = list(data)
     if not is_list_like(data):
         raise ValueError(
             f'Input `data` must be {list}, {tuple} or {np.ndarray}; '
@@ -2973,7 +3007,7 @@ ProgressBar = "ProgressBar"
 
 class ProgressBar(MutableParameters):
     pbar: Optional[TqdmProgressBar] = None
-    style: Literal['auto', 'notebook', 'std'] = 'auto'
+    style: Literal['auto', 'notebook', 'std', 'ray'] = 'auto'
     unit: str = 'row'
     color: str = '#0288d1'  ## Bluish
     ncols: int = 100
@@ -2998,7 +3032,7 @@ class ProgressBar(MutableParameters):
     @classmethod
     def _create_pbar(
             cls,
-            style: Literal['auto', 'notebook', 'std'],
+            style: Literal['auto', 'notebook', 'std', 'ray'],
             **kwargs,
     ) -> TqdmProgressBar:
         if style == 'auto':
@@ -3009,6 +3043,15 @@ class ProgressBar(MutableParameters):
             with optional_dependency('ipywidgets'):
                 kwargs['ncols']: Optional[int] = None
             return NotebookTqdmProgressBar(**kwargs)
+        elif style == 'ray':
+            from ray.experimental import tqdm_ray
+            kwargs = filter_keys(
+                kwargs,
+                keys=set(get_fn_spec(tqdm_ray.tqdm).args + get_fn_spec(tqdm_ray.tqdm).kwargs),
+                how='include',
+            )
+            from ray.experimental import tqdm_ray
+            return tqdm_ray.tqdm(**kwargs)
         else:
             return StdTqdmProgressBar(**kwargs)
 
@@ -3363,3 +3406,13 @@ def plotsum(
             else:
                 raise not_impl('how', how)
     return plots
+
+
+def to_pct(counts: pd.Series):  ## Converts value counts to percentages
+    _sum = counts.sum()
+    return pd.DataFrame({
+        'value': counts.index.tolist(),
+        'count': counts.tolist(),
+        'pct': counts.apply(lambda x: 100 * x / _sum).tolist(),
+        'count_str': counts.apply(lambda x: f'{x} of {_sum}').tolist(),
+    })

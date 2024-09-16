@@ -16,7 +16,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray.util.dask import RayDaskCallback
 from pydantic import validate_arguments, conint, confloat
-from synthesizrr.base.util.language import ProgressBar, set_param_from_alias, type_str, get_default, first_item, if_else
+from synthesizrr.base.util.language import ProgressBar, set_param_from_alias, type_str, get_default, first_item, Parameters
 from synthesizrr.base.constants.DataProcessingConstants import Parallelize, FailureAction, Status, COMPLETED_STATUSES
 
 from functools import partial
@@ -25,6 +25,12 @@ import asyncio
 import threading
 import time, inspect
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait as wait_future
+
+_RAY_ACCUMULATE_ITEM_WAIT: float = 10e-3  ## 10ms
+_LOCAL_ACCUMULATE_ITEM_WAIT: float = 1e-3  ## 1ms
+
+_RAY_ACCUMULATE_ITER_WAIT: float = 1000e-3  ## 1000ms
+_LOCAL_ACCUMULATE_ITER_WAIT: float = 100e-3  ## 100ms
 
 
 def _asyncio_start_event_loop(loop):
@@ -173,6 +179,25 @@ def run_concurrent(
         raise e
 
 
+class RestrictedConcurrencyThreadPoolExecutor(ThreadPoolExecutor):
+    """
+    Similar functionality to @concurrent.
+    """
+
+    def __init__(self, max_active_threads: Optional[int] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if max_active_threads is None:
+            max_active_threads: int = self._max_workers
+        assert isinstance(max_active_threads, int)
+        self._semaphore = Semaphore(max_active_threads)
+
+    def submit(self, *args, **kwargs):
+        self._semaphore.acquire()
+        future = super().submit(*args, **kwargs)
+        future.add_done_callback(lambda _: self._semaphore.release())
+        return future
+
+
 _GLOBAL_PROCESS_POOL_EXECUTOR: ProcessPoolExecutor = ProcessPoolExecutor(
     max_workers=max(1, min(32, mp.cpu_count() - 1))
 )
@@ -255,8 +280,103 @@ def stop_executor(
 
 
 @ray.remote(num_cpus=1)
-def __run_parallel_ray_executor(fn, *args, **kwargs):
+def _run_parallel_ray_executor(fn, *args, **kwargs):
     return fn(*args, **kwargs)
+
+
+def _ray_asyncio_start_event_loop(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+
+class RayPoolExecutor(Parameters):
+    max_workers: Union[int, Literal[inf]]
+    iter_wait: float = _RAY_ACCUMULATE_ITER_WAIT
+    item_wait: float = _RAY_ACCUMULATE_ITEM_WAIT
+    _asyncio_event_loop: Optional = None
+    _asyncio_event_loop_thread: Optional = None
+    _submission_executor: Optional[ThreadPoolExecutor] = None
+    _running_tasks: Dict = {}
+    _latest_submit: Optional[int] = None
+
+    def _set_asyncio(self):
+        # Create a new loop and a thread running this loop
+        if self._asyncio_event_loop is None:
+            self._asyncio_event_loop = asyncio.new_event_loop()
+            # print(f'Started _asyncio_event_loop')
+        if self._asyncio_event_loop_thread is None:
+            self._asyncio_event_loop_thread = threading.Thread(
+                target=_ray_asyncio_start_event_loop,
+                args=(self._asyncio_event_loop,),
+            )
+            self._asyncio_event_loop_thread.start()
+            # print(f'Started _asyncio_event_loop_thread')
+
+    def submit(
+            self,
+            fn,
+            *args,
+            scheduling_strategy: str = "SPREAD",
+            num_cpus: int = 1,
+            num_gpus: int = 0,
+            max_retries: int = 0,
+            retry_exceptions: Union[List, bool] = True,
+            **kwargs,
+    ):
+        # print(f'Running {fn_str(fn)} using {Parallelize.ray} with num_cpus={num_cpus}, num_gpus={num_gpus}')
+        def _submit_task():
+            return _run_parallel_ray_executor.options(
+                scheduling_strategy=scheduling_strategy,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                max_retries=max_retries,
+                retry_exceptions=retry_exceptions,
+            ).remote(fn, *args, **kwargs)
+
+        _task_uid = str(time.time_ns())
+
+        if self.max_workers == inf:
+            return _submit_task()  ## Submit to Ray directly
+        self._set_asyncio()
+        ## Create a coroutine (i.e. Future), but do not actually start executing it.
+        coroutine = self._ray_run_fn_async(
+            submit_task=_submit_task,
+            task_uid=_task_uid,
+        )
+
+        ## Schedule the coroutine to execute on the event loop (which is running on thread _asyncio_event_loop).
+        fut = asyncio.run_coroutine_threadsafe(coroutine, self._asyncio_event_loop)
+        # while _task_uid not in self._running_tasks:  ## Ensure task has started scheduling
+        #     time.sleep(self.item_wait)
+        return fut
+
+    async def _ray_run_fn_async(
+            self,
+            submit_task: Callable,
+            task_uid: str,
+    ):
+        # self._running_tasks[task_uid] = None
+        while len(self._running_tasks) >= self.max_workers:
+            for _task_uid in sorted(self._running_tasks.keys()):
+                if is_done(self._running_tasks[_task_uid]):
+                    self._running_tasks.pop(_task_uid, None)
+                    # print(f'Popped {_task_uid}')
+                    if len(self._running_tasks) < self.max_workers:
+                        break
+                time.sleep(self.item_wait)
+            if len(self._running_tasks) < self.max_workers:
+                break
+            time.sleep(self.iter_wait)
+        fut = submit_task()
+        self._running_tasks[task_uid] = fut
+        # print(f'Started {task_uid}. Num running: {len(self._running_tasks)}')
+
+        # ## Cleanup any completed tasks:
+        # for k in list(self._running_tasks.keys()):
+        #     if is_done(self._running_tasks[k]):
+        #         self._running_tasks.pop(k, None)
+        #     time.sleep(self.item_wait)
+        return fut
 
 
 def run_parallel_ray(
@@ -270,7 +390,7 @@ def run_parallel_ray(
         **kwargs,
 ):
     # print(f'Running {fn_str(fn)} using {Parallelize.ray} with num_cpus={num_cpus}, num_gpus={num_gpus}')
-    return __run_parallel_ray_executor.options(
+    return _run_parallel_ray_executor.options(
         scheduling_strategy=scheduling_strategy,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
@@ -285,7 +405,7 @@ def dispatch(
         parallelize: Parallelize,
         forward_parallelize: bool = False,
         delay: float = 0.0,
-        executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]] = None,
+        executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor, RayPoolExecutor]] = None,
         **kwargs
 ) -> Any:
     parallelize: Parallelize = Parallelize.from_str(parallelize)
@@ -301,24 +421,26 @@ def dispatch(
     elif parallelize is Parallelize.processes:
         return run_parallel(fn, *args, executor=executor, **kwargs)
     elif parallelize is Parallelize.ray:
-        return run_parallel_ray(fn, *args, **kwargs)
+        return run_parallel_ray(fn, *args, executor=executor, **kwargs)
     raise NotImplementedError(f'Unsupported parallelization: {parallelize}')
 
 
 def dispatch_executor(
         parallelize: Parallelize,
         **kwargs
-) -> Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor]]:
+) -> Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor, RayPoolExecutor]]:
     parallelize: Parallelize = Parallelize.from_str(parallelize)
     set_param_from_alias(kwargs, param='max_workers', alias=['num_workers'], default=None)
     max_workers: Optional[int] = kwargs.pop('max_workers', None)
     if max_workers is None:
-        ## Uses the default executor for threads/processes.
+        ## Uses the default executor for threads/processes/ray.
         return None
     if parallelize is Parallelize.threads:
         return ThreadPoolExecutor(max_workers=max_workers)
     elif parallelize is Parallelize.processes:
         return ProcessPoolExecutor(max_workers=max_workers)
+    elif parallelize is Parallelize.ray:
+        return RayPoolExecutor(max_workers=max_workers)
     else:
         return None
 
@@ -329,7 +451,7 @@ def get_result(
         wait: float = 1.0,  ## 1000 ms
 ) -> Optional[Any]:
     if isinstance(x, Future):
-        return x.result()
+        return get_result(x.result(), wait=wait)
     if isinstance(x, ray.ObjectRef):
         while True:
             try:
@@ -397,13 +519,6 @@ def is_failed(x, *, pending_returns_false: bool = False) -> Optional[bool]:
         return False
     except Exception as e:
         return True
-
-
-_RAY_ACCUMULATE_ITEM_WAIT: float = 100e-3  ## 100ms
-_LOCAL_ACCUMULATE_ITEM_WAIT: float = 10e-3  ## 10ms
-
-_RAY_ACCUMULATE_ITER_WAIT: float = 1000e-3  ## 1000ms
-_LOCAL_ACCUMULATE_ITER_WAIT: float = 100e-3  ## 100ms
 
 
 def accumulate(
@@ -678,8 +793,9 @@ def retry(
         wait: confloat(ge=0.0) = 10.0,
         jitter: confloat(gt=0.0) = 0.5,
         silent: bool = True,
+        return_num_failures: bool = False,
         **kwargs
-):
+) -> Union[Any, Tuple[Any, int]]:
     """
     Retries a function call a certain number of times, waiting between calls (with a jitter in the wait period).
     :param fn: the function to call.
@@ -694,15 +810,21 @@ def retry(
     """
     wait: float = float(wait)
     latest_exception = None
+    num_failures: int = 0
     for retry_num in range(retries + 1):
         try:
-            return fn(*args, **kwargs)
+            out = fn(*args, **kwargs)
+            if return_num_failures:
+                return out, num_failures
+            else:
+                return out
         except Exception as e:
+            num_failures += 1
             latest_exception = traceback.format_exc()
             if not silent:
-                logging.debug(f'Function call failed with the following exception:\n{latest_exception}')
+                print(f'Function call failed with the following exception:\n{latest_exception}')
                 if retry_num < (retries - 1):
-                    logging.debug(f'Retrying {retries - (retry_num + 1)} more times...\n')
+                    print(f'Retrying {retries - (retry_num + 1)} more times...\n')
             time.sleep(np.random.uniform(wait - wait * jitter, wait + wait * jitter))
     raise RuntimeError(f'Function call failed {retries} times.\nLatest exception:\n{latest_exception}\n')
 
