@@ -15,10 +15,10 @@ from concurrent.futures.process import BrokenProcessPool
 import ray
 from ray.exceptions import GetTimeoutError
 from ray.util.dask import RayDaskCallback
-from pydantic import validate_arguments, conint, confloat
-from synthesizrr.base.util.language import ProgressBar, set_param_from_alias, type_str, get_default, first_item, Parameters
+from pydantic import conint, confloat
+from synthesizrr.base.util.language import ProgressBar, set_param_from_alias, type_str, get_default, first_item, Parameters, \
+    is_list_or_set_like, is_dict_like, PandasSeries, filter_kwargs
 from synthesizrr.base.constants.DataProcessingConstants import Parallelize, FailureAction, Status, COMPLETED_STATUSES
-
 from functools import partial
 ## Jupyter-compatible asyncio usage:
 import asyncio
@@ -445,6 +445,117 @@ def dispatch_executor(
         return None
 
 
+def dispatch_apply(
+        struct: Union[List, Tuple, np.ndarray, PandasSeries, Set, frozenset, Dict],
+        *args,
+        fn: Callable,
+        parallelize: Parallelize,
+        forward_parallelize: bool = False,
+        item_wait: Optional[float] = None,
+        iter_wait: Optional[float] = None,
+        iter: bool = False,
+        **kwargs
+) -> Any:
+    parallelize: Parallelize = Parallelize.from_str(parallelize)
+    item_wait: float = get_default(
+        item_wait,
+        {
+            Parallelize.ray: _RAY_ACCUMULATE_ITEM_WAIT,
+            Parallelize.processes: _LOCAL_ACCUMULATE_ITEM_WAIT,
+            Parallelize.threads: _LOCAL_ACCUMULATE_ITEM_WAIT,
+            Parallelize.asyncio: 0.0,
+            Parallelize.sync: 0.0,
+        }[parallelize]
+    )
+    iter_wait: float = get_default(
+        iter_wait,
+        {
+            Parallelize.ray: _RAY_ACCUMULATE_ITER_WAIT,
+            Parallelize.processes: _LOCAL_ACCUMULATE_ITER_WAIT,
+            Parallelize.threads: _LOCAL_ACCUMULATE_ITER_WAIT,
+            Parallelize.asyncio: 0.0,
+            Parallelize.sync: 0.0,
+        }[parallelize]
+    )
+    if forward_parallelize:
+        kwargs['parallelize'] = parallelize
+    executor: Optional = dispatch_executor(
+        parallelize=parallelize,
+        **kwargs,
+    )
+    try:
+        set_param_from_alias(kwargs, param='progress_bar', alias=['progress', 'pbar'], default=True)
+        progress_bar: Union[ProgressBar, Dict, bool] = kwargs.pop('progress_bar', False)
+        submit_pbar: ProgressBar = ProgressBar.of(
+            progress_bar,
+            total=len(struct),
+            desc='Submitting',
+            prefer_kwargs=False,
+            unit='item',
+        )
+        collect_pbar: ProgressBar = ProgressBar.of(
+            progress_bar,
+            total=len(struct),
+            desc='Collecting',
+            prefer_kwargs=False,
+            unit='item',
+        )
+        if is_list_or_set_like(struct):
+            futs = []
+            for v in struct:
+                def submit_task(item, **dispatch_kwargs):
+                    return fn(item, **dispatch_kwargs)
+
+                futs.append(
+                    dispatch(
+                        fn=submit_task,
+                        item=v,
+                        parallelize=parallelize,
+                        executor=executor,
+                        delay=item_wait,
+                        **filter_kwargs(fn, **kwargs),
+                    )
+                )
+                submit_pbar.update(1)
+        elif is_dict_like(struct):
+            futs = {}
+            for k, v in struct.items():
+                def submit_task(item, **dispatch_kwargs):
+                    return fn(item, **dispatch_kwargs)
+
+                futs[k] = dispatch(
+                    fn=submit_task,
+                    key=k,
+                    item=v,
+                    parallelize=parallelize,
+                    executor=executor,
+                    delay=item_wait,
+                    **filter_kwargs(fn, **kwargs),
+                )
+                submit_pbar.update(1)
+        else:
+            raise NotImplementedError(f'Unsupported type: {type_str(struct)}')
+        submit_pbar.success()
+        if iter:
+            return accumulate_iter(
+                futs,
+                item_wait=item_wait,
+                iter_wait=iter_wait,
+                progress_bar=collect_pbar,
+                **kwargs
+            )
+        else:
+            return accumulate(
+                futs,
+                item_wait=item_wait,
+                iter_wait=iter_wait,
+                progress_bar=collect_pbar,
+                **kwargs
+            )
+    finally:
+        stop_executor(executor)
+
+
 def get_result(
         x,
         *,
@@ -785,7 +896,6 @@ def wait(
         wait_if_future(futures)
 
 
-@validate_arguments
 def retry(
         fn,
         *args,

@@ -602,13 +602,19 @@ def safe_validate_arguments(f):
     wrapper.__signature__ = sig
     wrapper.__annotations__ = {f"{n}_" if n in names_to_fix else n: v for n, v in f.__annotations__.items()}
 
-    return validate_arguments(
-        wrapper,
-        config={
-            "allow_population_by_field_name": True,
-            "arbitrary_types_allowed": True,
-        }
-    )
+    try:
+        return validate_arguments(
+            wrapper,
+            config={
+                "allow_population_by_field_name": True,
+                "arbitrary_types_allowed": True,
+            }
+        )
+    except Exception as e:
+        raise ValueError(
+            f'Error creating model for function {get_fn_spec(f).resolved_name}.'
+            f'\nEncountered Exception: {format_exception_msg(e)}'
+        )
 
 
 def not_impl(
@@ -1529,6 +1535,27 @@ def invert_dict(d: Dict) -> Dict:
     if len(d_inv) != len(d):
         raise ValueError(f'Dict is not invertible as values are not unique.')
     return d_inv
+
+
+def iter_dict(d, depth: int = 1, *, _cur_depth: int = 0):
+    """
+    Recursively iterate over nested dictionaries and yield keys at each depth.
+
+    :param d: The dictionary to iterate over.
+    :param depth: The current depth of recursion (used for tracking depth of keys).
+    :return: Yields tuples where the first elements are keys at different depths, and the last element is the value.
+    """
+    assert isinstance(d, dict), f'Input must be a dictionary, found: {type(d)}'
+    assert isinstance(depth, int) and depth >= 1, f'depth must be an integer (1 or more)'
+
+    for k, v in d.items():
+        if isinstance(v, dict) and _cur_depth < depth - 1:
+            # If the value is a dictionary, recurse
+            for subkeys in iter_dict(v, _cur_depth=_cur_depth + 1, depth=depth):
+                yield (k,) + subkeys
+        else:
+            # If the value is not a dictionary, yield the key-value pair
+            yield (k, v)
 
 
 ## ======================== NumPy utils ======================== ##
@@ -2625,6 +2652,15 @@ class Parameters(BaseModel, ABC):
     aliases: ClassVar[Tuple[str, ...]] = tuple()
     dict_exclude: ClassVar[Tuple[str, ...]] = tuple()
 
+    def __init__(self, *args, **kwargs):
+        try:
+            super().__init__(*args, **kwargs)
+        except Exception as e:
+            raise ValueError(
+                f'Cannot create Pydantic instance of type "{self.class_name}".'
+                f'\nEncountered exception: {format_exception_msg(e)}'
+            )
+
     @classproperty
     def class_name(cls) -> str:
         return str(cls.__name__)  ## Will return the child class name.
@@ -3227,6 +3263,15 @@ def create_progress_bar(
                 smoothing=smoothing,
                 **kwargs
             )
+        elif style == 'ray':
+            from ray.experimental import tqdm_ray
+            kwargs = filter_keys(
+                kwargs,
+                keys=set(get_fn_spec(tqdm_ray.tqdm).args + get_fn_spec(tqdm_ray.tqdm).kwargs),
+                how='include',
+            )
+            from ray.experimental import tqdm_ray
+            return tqdm_ray.tqdm(**kwargs)
         else:
             return StdTqdmProgressBar(
                 ncols=ncols,
@@ -3309,6 +3354,11 @@ def ignore_all_output():
             with ignore_stderr():
                 with ignore_logging():
                     yield
+
+
+@contextmanager
+def ignore_nothing():
+    yield
 
 
 # from pydantic import Field, AliasChoices

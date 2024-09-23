@@ -1541,6 +1541,7 @@ class RayTuneTrainer(Trainer):
                 continue
             final_dataset_metrics[dataset_metric.display_name]: Dict[str, Union[int, float, Dict]] = {
                 'mean': np.mean(final_dataset_metrics[dataset_metric.display_name]),
+                'median': np.median(final_dataset_metrics[dataset_metric.display_name]),
                 'std': np.std(final_dataset_metrics[dataset_metric.display_name], ddof=1),  ## Unbiased
                 'min': np.min(final_dataset_metrics[dataset_metric.display_name]),
                 'max': np.max(final_dataset_metrics[dataset_metric.display_name]),
