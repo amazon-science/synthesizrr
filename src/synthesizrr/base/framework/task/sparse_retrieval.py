@@ -7,9 +7,10 @@ from synthesizrr.base.util import is_list_like, Parameters, MappedParameters, op
     MutableParameters, Schema, only_item, set_param_from_alias, wait, as_tuple, as_list, str_normalize, \
     INDEX_COL_DEFAULT_NAME, AutoEnum, auto, safe_validate_arguments, type_str, Timer, StringUtil, get_default, \
     dispatch, dispatch_executor, accumulate, accumulate_iter, ProgressBar, best_k, keep_keys, format_exception_msg, \
-    ThreadPoolExecutor, ProcessPoolExecutor, iter_batches, get_result, check_isinstance
+    ThreadPoolExecutor, ProcessPoolExecutor, iter_batches, get_result, check_isinstance, Log
 from synthesizrr.base.framework.ray_base import ActorComposite
-from synthesizrr.base.data import ScalableDataFrame, ScalableSeries, ScalableSeriesRawType, ScalableDataFrameRawType, FileMetadata
+from synthesizrr.base.data import ScalableDataFrame, ScalableSeries, ScalableSeriesRawType, ScalableDataFrameRawType, \
+    FileMetadata
 from synthesizrr.base.framework import Dataset, load_dataset, Algorithm
 from synthesizrr.base.constants import Task, MLType, MLTypeSchema, DataLayout, DataSplit, Alias, Parallelize
 from pydantic import Extra, validator, root_validator, conint, constr, confloat
@@ -293,20 +294,36 @@ class BM25IndexStore(MutableParameters, ABC):
     def calculate_token_idfs(self) -> Dict[str, float]:
         pass
 
-    def get_top_k(self, query: str, k: int, *, retrieve_documents: bool = True) -> List[Tuple[BM25IndexStoreDoc, float]]:
-        doc_query_scores: np.ndarray = self.get_doc_scores(query)
-        top_k_doc_query_score_idxs, top_k_doc_query_scores = best_k(
-            doc_query_scores,
-            k=k,
-            how='max',
-            sort='descending',
-        )
-        top_k_doc_ids: np.ndarray = self.doc_ids[top_k_doc_query_score_idxs]
-        top_k_docs: List[BM25IndexStoreDoc] = [
-            self.docs[top_k_doc_id] if retrieve_documents else self.docs[top_k_doc_id].copy_without_doc()
-            for top_k_doc_id in top_k_doc_ids
-        ]
-        return list(zip(top_k_docs, top_k_doc_query_scores))
+    def get_top_k(
+            self,
+            query: str,
+            k: int,
+            *,
+            retrieve_documents: bool = True,
+    ) -> Tuple[List[Tuple[BM25IndexStoreDoc, float]], Dict]:
+        with Timer(silent=True) as timer_doc_scores:
+            doc_query_scores: np.ndarray = self.get_doc_scores(query)
+        with Timer(silent=True) as timer_best_k:
+            top_k_doc_query_score_idxs, top_k_doc_query_scores = best_k(
+                doc_query_scores,
+                k=k,
+                how='max',
+                sort='descending',
+            )
+        with Timer(silent=True) as timer_top_k_doc_ids:
+            top_k_doc_ids: np.ndarray = self.doc_ids[top_k_doc_query_score_idxs]
+        with Timer(silent=True) as timer_top_k_docs:
+            top_k_docs: List[BM25IndexStoreDoc] = [
+                self.docs[top_k_doc_id] if retrieve_documents else self.docs[top_k_doc_id].copy_without_doc()
+                for top_k_doc_id in top_k_doc_ids
+            ]
+        perf: Dict = {
+            'doc_scores': timer_doc_scores.time_taken_sec,
+            'best_k': timer_best_k.time_taken_sec,
+            'top_k_doc_ids': timer_top_k_doc_ids.time_taken_sec,
+            'top_k_docs': timer_top_k_docs.time_taken_sec,
+        }
+        return list(zip(top_k_docs, top_k_doc_query_scores)), perf
 
     def get_doc_by_id(self, doc_id: str) -> Optional[BM25IndexStoreDoc]:
         return self.docs.get(doc_id)
@@ -663,7 +680,7 @@ class BM25RetrievalIndex(BM25RetrievalIndexBase):
     ) -> List[List[RankedResult]]:
         batch_ranked_results: List[List[RankedResult]] = []
         for query in queries_batch:
-            top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = self.index.get_top_k(
+            top_k_results, perf = self.index.get_top_k(
                 query,
                 k=top_k,
             )
@@ -769,22 +786,29 @@ class BM25IndexStoreActor:
             *,
             retrieve_documents: bool = True,
             return_actor_id: bool = False,
+            return_perf: bool = False,
     ) -> Union[
         List[List[Tuple[BM25IndexStoreDoc, float]]],
         List[List[Tuple[str, BM25IndexStoreDoc, float]]],
+        List[List[Tuple[str, BM25IndexStoreDoc, float, Dict]]],
     ]:
         actor_id: str = self.actor_id
         top_k_batch: List[List[Tuple]] = []
         for query in queries_batch:
-            query_top_k_results: List[Tuple[BM25IndexStoreDoc, float]] = self.index_shard.get_top_k(
+            query_top_k_results, perf = self.index_shard.get_top_k(
                 query,
                 k=top_k,
                 retrieve_documents=retrieve_documents,
             )
             if return_actor_id:
-                query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = [
-                    (actor_id, doc, score)
-                    for doc, score in query_top_k_results
+                query_top_k_results: List[Tuple] = [
+                    tuple([actor_id] + list(x))
+                    for x in query_top_k_results
+                ]
+            if return_perf:
+                query_top_k_results: List[Tuple] = [
+                    tuple(list(x) + [perf])
+                    for x in query_top_k_results
                 ]
             top_k_batch.append(query_top_k_results)
         return top_k_batch
@@ -937,8 +961,10 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
             top_k: int,
             retrieve_documents: bool,
     ) -> List[List[RankedResult]]:
-        with Timer(f'Retrieving {top_k} results for batch of {len(queries_batch)} queries from {len(self.index)} index shards'):
-            with Timer(f'>> Retrieving {top_k} results for {len(queries_batch)} queries from each index shard'):
+        num_queries: int = len(queries_batch)
+        num_index_shards: int = len(self.index)
+        with Timer(f'Retrieving {top_k} results for batch of {num_queries} queries from {num_index_shards} index shards'):
+            with Timer(f'>> Retrieving {top_k} results for {num_queries} queries from each index shard'):
                 actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]] = {}
                 for index_actor_composite in self.index:
                     index_actor: ray.actor.ActorHandle = index_actor_composite.actor
@@ -947,17 +973,19 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
                         top_k=top_k,
                         retrieve_documents=False,
                         return_actor_id=True,
+                        return_perf=True,
                     )
-                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]] = accumulate(
+                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float, Dict]]]] = accumulate(
                     actors_top_k_results,
                     progress_bar=True,
                     item_wait=1e-3,
                     iter_wait=100e-3,
                 )
+                self._log_perf(actors_top_k_results, num_queries=num_queries, top_k=top_k, num_index_shards=num_index_shards)
             with Timer(f'>> Retrieving missing documents to populate cache'):
                 self._populate_docs_cache(actors_top_k_results)
 
-            with Timer(f'>> Merging {top_k} results for {len(queries_batch)} queries across {len(self.index)} index shards'):
+            with Timer(f'>> Merging {top_k} results for {num_queries} queries across {num_index_shards} index shards'):
                 batch_ranked_results: List[List[RankedResult]] = []
                 for all_actor_query_top_k_results in zip(*list(actors_top_k_results.values())):
                     batch_ranked_results.append(
@@ -968,17 +996,39 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
                             how='max',
                         )
                     )
-                assert len(batch_ranked_results) == len(queries_batch)
+                assert len(batch_ranked_results) == num_queries
         return batch_ranked_results
+
+    def _log_perf(
+            self,
+            actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float, Dict]]]],
+            num_queries: int,
+            top_k: int,
+            num_index_shards: int,
+    ):
+        total_perf: Dict[str, float] = {}
+        for _, actor_all_query_top_k_results in actors_top_k_results.items():
+            for query_top_k_results in actor_all_query_top_k_results:
+                for document_actor_id, bm_doc, score, perf in query_top_k_results:  ## For each query
+                    if len(total_perf) == 0:
+                        for step_name, step_time_taken_sec in perf.items():
+                            total_perf.setdefault(step_name, 0.0)
+                            total_perf[step_name] += step_time_taken_sec
+        Log.info(
+            f'>> Sum of time taken for retrieval computation '
+            f'(summed across {num_index_shards} index shards, {num_queries} queries and retrieving {top_k} results):'
+        )
+        for step_name, total_step_time_taken_sec in total_perf.items():
+            Log.info(f'Step: {step_name}, compute time: {total_step_time_taken_sec:.3f} seconds')
 
     def _populate_docs_cache(
             self,
-            actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]],
+            actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float, Dict]]]],
     ):
         actor_to_missing_doc_ids: Dict[str, List[str]] = {}
         for _, actor_all_query_top_k_results in actors_top_k_results.items():
             for query_top_k_results in actor_all_query_top_k_results:
-                for document_actor_id, bm_doc, score in query_top_k_results:  ## For each query
+                for document_actor_id, bm_doc, score, perf in query_top_k_results:  ## For each query
                     check_isinstance(bm_doc, BM25IndexStoreDoc)
                     if bm_doc.doc_id not in self._doc_id_to_doc_cache:
                         actor_to_missing_doc_ids.setdefault(document_actor_id, [])
