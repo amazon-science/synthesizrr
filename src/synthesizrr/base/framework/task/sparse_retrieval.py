@@ -965,7 +965,7 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
         num_index_shards: int = len(self.index)
         with Timer(f'Retrieving {top_k} results for batch of {num_queries} queries from {num_index_shards} index shards'):
             with Timer(f'>> Retrieving {top_k} results for {num_queries} queries from each index shard'):
-                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float]]]] = {}
+                actors_top_k_results: Dict[str, List[List[Tuple[str, BM25IndexStoreDoc, float, Dict]]]] = {}
                 for index_actor_composite in self.index:
                     index_actor: ray.actor.ActorHandle = index_actor_composite.actor
                     actors_top_k_results[index_actor_composite.actor_id] = index_actor.get_top_k_batch.remote(
@@ -1053,23 +1053,23 @@ class RayBM25RetrievalIndex(BM25RetrievalIndexBase):
 
     def _merge_retrieved_results(
             self,
-            all_actor_query_top_k_results: Tuple[List[Tuple[str, BM25IndexStoreDoc, float]], ...],
+            all_actor_query_top_k_results: Tuple[List[Tuple[str, BM25IndexStoreDoc, float, Dict]], ...],
             top_k: int,
             retrieve_documents: bool,
             how: Literal['max', 'min'],
     ) -> List[RankedResult]:
         ## For a particular query, sort the top-k results across actors.
         assert how in {'max', 'min'}
-        query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = []
+        query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float, Dict]] = []
         for actor_query_top_k_results in all_actor_query_top_k_results:
             query_top_k_results.extend(actor_query_top_k_results)
 
         with Timer(f'>>>> Merging retrieved results into top-k RankedResults', silent=True):
-            query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float]] = sorted(
+            query_top_k_results: List[Tuple[str, BM25IndexStoreDoc, float, Dict]] = sorted(
                 query_top_k_results, key=lambda x: x[2], reverse=(True if how == 'max' else False)
             )
             query_ranked_results: List[RankedResult] = []
-            for k, (doc_actor_id, top_k_doc, top_k_score) in enumerate(query_top_k_results):
+            for k, (doc_actor_id, top_k_doc, top_k_score, perf) in enumerate(query_top_k_results):
                 k: int = k + 1
                 doc: Optional[Dict] = None
                 if retrieve_documents and self.params.store_documents:
