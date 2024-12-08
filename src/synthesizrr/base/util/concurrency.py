@@ -6,7 +6,7 @@ from datetime import datetime
 from math import inf
 import numpy as np
 import asyncio, ctypes
-from threading import Semaphore, Thread
+from threading import Semaphore, Thread, Lock
 import multiprocessing as mp
 from concurrent.futures._base import Future
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait as wait_future
@@ -17,7 +17,7 @@ from ray.exceptions import GetTimeoutError
 from ray.util.dask import RayDaskCallback
 from pydantic import conint, confloat
 from synthesizrr.base.util.language import ProgressBar, set_param_from_alias, type_str, get_default, first_item, Parameters, \
-    is_list_or_set_like, is_dict_like, PandasSeries, filter_kwargs
+    is_list_or_set_like, is_dict_like, PandasSeries, filter_kwargs, format_exception_msg
 from synthesizrr.base.constants.DataProcessingConstants import Parallelize, FailureAction, Status, COMPLETED_STATUSES
 from functools import partial
 ## Jupyter-compatible asyncio usage:
@@ -81,7 +81,7 @@ async def async_http_get(url):
             return await response.read()
 
 
-def concurrent(max_active_threads: int = 10, max_calls_per_second: float = inf):
+def concurrent(max_workers: int = 10, max_calls_per_second: float = inf):
     """
     Decorator which runs function calls concurrently via multithreading.
     When decorating an IO-bound function with @concurrent(MAX_THREADS), and then invoking the function
@@ -108,7 +108,7 @@ def concurrent(max_active_threads: int = 10, max_calls_per_second: float = inf):
     maximum concurrency of 5. If each function call takes 100ms, then we end up making 1000/100*5 = 50 calls to the
     downstream service each second. We thus should pass `max_calls_per_second` to restrict this to a smaller value.
 
-    :param max_active_threads: the max number of threads which can be running the function at one time. This is thus
+    :param max_workers: the max number of threads which can be running the function at one time. This is thus
     them max concurrency factor.
     :param max_calls_per_second: controls the rate at which we can call the function.
     :return: N/A, this is a decorator.
@@ -124,10 +124,10 @@ def concurrent(max_active_threads: int = 10, max_calls_per_second: float = inf):
         ## if you write two decorated functions `def say_hi` and `def say_bye`, they each gets a separate executor and
         ## semaphore. Then, if you invoke `say_hi` 30 times and `say_bye` 20 times, all 30 calls to say_hi will use the
         ## same executor and semaphore, and all 20 `say_bye` will use a different executor and semaphore. The value of
-        ## `max_active_threads` will determine how many function calls actually run concurrently, e.g. if say_hi has
-        ## max_active_threads=5, then the 30 calls will run 5 at a time (this is enforced by the semaphore).
-        executor = ThreadPoolExecutor(max_workers=max_active_threads)
-        semaphore = Semaphore(max_active_threads)
+        ## `max_workers` will determine how many function calls actually run concurrently, e.g. if say_hi has
+        ## max_workers=5, then the 30 calls will run 5 at a time (this is enforced by the semaphore).
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        semaphore = Semaphore(max_workers)
 
         ## The minimum time between invocations.
         min_time_interval_between_calls = 1 / max_calls_per_second
@@ -155,7 +155,62 @@ def concurrent(max_active_threads: int = 10, max_calls_per_second: float = inf):
     return decorator
 
 
-_GLOBAL_THREAD_POOL_EXECUTOR: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=16)
+class RestrictedConcurrencyThreadPoolExecutor(ThreadPoolExecutor):
+    """
+    This executor restricts concurrency (max active threads) and, optionally, rate (max calls per second).
+    It is similar in functionality to the @concurrent decorator, but implemented at the executor level.
+    """
+
+    def __init__(
+            self,
+            max_workers: Optional[int] = None,
+            *args,
+            max_calls_per_second: float = inf,
+            **kwargs,
+    ):
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError(f'Expected `max_workers`to be a non-negative integer.')
+        kwargs['max_workers'] = max_workers
+        super().__init__(*args, **kwargs)
+        self._semaphore = Semaphore(max_workers)
+        self._max_calls_per_second = max_calls_per_second
+
+        # If we have an infinite rate, don't enforce a delay
+        self._min_time_interval_between_calls = 1 / self._max_calls_per_second
+
+        # Tracks the last time a call was started (not finished, just started)
+        self._time_last_called = 0.0
+        self._lock = Lock()  # Protects access to _time_last_called
+
+    def submit(self, fn, *args, **kwargs):
+        # Enforce concurrency limit
+        self._semaphore.acquire()
+
+        # Rate limiting logic: Before starting a new call, ensure we wait long enough if needed
+        if self._min_time_interval_between_calls > 0.0:
+            with self._lock:
+                time_elapsed_since_last_called = time.time() - self._time_last_called
+                time_to_wait = max(0.0, self._min_time_interval_between_calls - time_elapsed_since_last_called)
+
+            # Wait the required time
+            if time_to_wait > 0:
+                time.sleep(time_to_wait)
+
+            # Update the last-called time after the wait
+            with self._lock:
+                self._time_last_called = time.time()
+        else:
+            # No rate limiting, just update the last-called time
+            with self._lock:
+                self._time_last_called = time.time()
+
+        future = super().submit(fn, *args, **kwargs)
+        # When the task completes, release the semaphore to allow another task to start
+        future.add_done_callback(lambda _: self._semaphore.release())
+        return future
+
+
+_GLOBAL_THREAD_POOL_EXECUTOR: ThreadPoolExecutor = RestrictedConcurrencyThreadPoolExecutor(max_workers=16)
 
 
 def run_concurrent(
@@ -172,30 +227,11 @@ def run_concurrent(
         return executor.submit(fn, *args, **kwargs)  ## return a future
     except BrokenThreadPool as e:
         if executor is _GLOBAL_THREAD_POOL_EXECUTOR:
-            executor = ThreadPoolExecutor(max_workers=_GLOBAL_THREAD_POOL_EXECUTOR._max_workers)
+            executor = RestrictedConcurrencyThreadPoolExecutor(max_workers=_GLOBAL_THREAD_POOL_EXECUTOR._max_workers)
             del _GLOBAL_THREAD_POOL_EXECUTOR
             _GLOBAL_THREAD_POOL_EXECUTOR = executor
             return executor.submit(fn, *args, **kwargs)  ## return a future
         raise e
-
-
-class RestrictedConcurrencyThreadPoolExecutor(ThreadPoolExecutor):
-    """
-    Similar functionality to @concurrent.
-    """
-
-    def __init__(self, max_active_threads: Optional[int] = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if max_active_threads is None:
-            max_active_threads: int = self._max_workers
-        assert isinstance(max_active_threads, int)
-        self._semaphore = Semaphore(max_active_threads)
-
-    def submit(self, *args, **kwargs):
-        self._semaphore.acquire()
-        future = super().submit(*args, **kwargs)
-        future.add_done_callback(lambda _: self._semaphore.release())
-        return future
 
 
 _GLOBAL_PROCESS_POOL_EXECUTOR: ProcessPoolExecutor = ProcessPoolExecutor(
@@ -432,11 +468,12 @@ def dispatch_executor(
     parallelize: Parallelize = Parallelize.from_str(parallelize)
     set_param_from_alias(kwargs, param='max_workers', alias=['num_workers'], default=None)
     max_workers: Optional[int] = kwargs.pop('max_workers', None)
+    max_calls_per_second: Optional[int] = kwargs.pop('max_calls_per_second', inf)
     if max_workers is None:
         ## Uses the default executor for threads/processes/ray.
         return None
     if parallelize is Parallelize.threads:
-        return ThreadPoolExecutor(max_workers=max_workers)
+        return RestrictedConcurrencyThreadPoolExecutor(max_workers=max_workers, max_calls_per_second=max_calls_per_second)
     elif parallelize is Parallelize.processes:
         return ProcessPoolExecutor(max_workers=max_workers)
     elif parallelize is Parallelize.ray:
@@ -899,9 +936,9 @@ def wait(
 def retry(
         fn,
         *args,
-        retries: conint(ge=0) = 5,
-        wait: confloat(ge=0.0) = 10.0,
-        jitter: confloat(gt=0.0) = 0.5,
+        retries: int = 5,
+        wait: float = 10.0,
+        jitter: float = 0.5,
         silent: bool = True,
         return_num_failures: bool = False,
         **kwargs
@@ -915,9 +952,13 @@ def retry(
         (0.9 * wait, 1.1 * wait) seconds.
     :param silent: whether to print an error message on each retry.
     :param kwargs: keyword arguments forwarded to the function.
-    :return: the function's return value if any call succeeds.
+    :param return_num_failures: whether to return the number of times failed.
+    :return: the function's return value if any call succeeds. If return_num_failures is set, returns this as the second result.
     :raise: RuntimeError if all `retries` calls fail.
     """
+    assert isinstance(retries, int) and 0 <= retries
+    assert isinstance(wait, (int, float)) and 0 <= wait
+    assert isinstance(jitter, (int, float)) and 0 <= jitter <= 1
     wait: float = float(wait)
     latest_exception = None
     num_failures: int = 0
@@ -930,13 +971,13 @@ def retry(
                 return out
         except Exception as e:
             num_failures += 1
-            latest_exception = traceback.format_exc()
+            latest_exception = format_exception_msg(e)
             if not silent:
-                print(f'Function call failed with the following exception:\n{latest_exception}')
+                print(f'Function call failed with the following exception (attempts: {retry_num + 1}):\n{latest_exception}')
                 if retry_num < (retries - 1):
-                    print(f'Retrying {retries - (retry_num + 1)} more times...\n')
+                    print(f'Retrying {retries - (retry_num + 1)} more time(s)...\n')
             time.sleep(np.random.uniform(wait - wait * jitter, wait + wait * jitter))
-    raise RuntimeError(f'Function call failed {retries} times.\nLatest exception:\n{latest_exception}\n')
+    raise RuntimeError(f'Function call failed {retries + 1} time(s).\nLatest exception:\n{latest_exception}\n')
 
 
 def daemon(wait: float, exit_on_error: bool = False, sentinel: Optional[List] = None, **kwargs):
