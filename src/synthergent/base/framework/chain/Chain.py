@@ -5,9 +5,10 @@ import numpy as np
 import time, traceback, pickle, gc, os, json
 from synthergent.base.util import Registry, MutableParameters, Parameters, set_param_from_alias, is_list_like, as_list, \
     random_sample, safe_validate_arguments, format_exception_msg, StringUtil, get_fn_spec, Timer, type_str, \
-    run_concurrent, get_result, Future, get_default, FunctionSpec, dispatch, is_function, Log, ThreadPoolExecutor, \
-    ProgressBar, stop_executor, only_item, worker_ids, dispatch_executor
-from synthergent.base.data import FileMetadata, ScalableDataFrame, ScalableSeries, Asset, ScalableDataFrameOrRaw
+    run_concurrent, get_result, Future, get_default, FunctionSpec, dispatch, is_function, remove_keys, \
+    ProgressBar, stop_executor, only_item, dispatch_executor, ThreadPoolExecutor, ProcessPoolExecutor, \
+    accumulate, accumulate_iter
+from synthergent.base.data import FileMetadata, ScalableDataFrame, ScalableSeries, Asset
 from synthergent.base.constants import Status, Parallelize, Alias, COMPLETED_STATUSES
 from synthergent.base.util.notify import Notifier
 from synthergent.base.framework.tracker import Tracker
@@ -254,16 +255,32 @@ class Chain(MutableParameters):
             self,
             *args,
             exn_name: Optional[constr(min_length=1)] = None,
-            verbosity: conint(ge=0) = 1,
             tracker: Optional[Union[Tracker, Dict, str]] = None,
             notifier: Optional[Union[Notifier, Dict, str]] = None,
             background: bool = False,
             after: Optional[ChainExecution] = None,
-            after_wait: conint(ge=0) = 60,
+            after_wait: conint(ge=0) = 15,
             step_wait: confloat(ge=0.0) = 0.0,
             step_wait_jitter: confloat(gt=0.0) = 0.8,
+            step_parallelize: bool = False,
+            executor: Optional[Any] = None,
+            verbosity: conint(ge=0) = 1,
             **kwargs,
     ) -> Union[ChainExecution, Future]:
+        """
+        exn_name: (Optional) name for the execution.
+        background: (Default: False) whether to run as a background thread or not.
+        tracker: (Optional) whether to track logs to file, Aim, etc.
+        notifier: (Optional) whether to notify via Discord, etc.
+        after: (Optional) current execution only starts after another one ends.
+        after_wait: (Default: 15) number of seconds to pause while waiting for a previous execution to end.
+        step_wait: (Default: 0) numer of seconds to wait between steps.
+        step_wait_jitter: (Default: 0.8) fluctuation in step_wait time (useful when running concurrent executions).
+        step_parallelize: (Default: False) whether to run all steps in parallel.
+        executor: (Optional) common executor usable within each Step. Can be shared between different chain executions to
+         restrict resource usage.
+        verbosity: Verbosity level, forwarded to each Step.
+        """
         if len(args) > 0:
             raise ValueError(f'Cannot only pass keyword arguments to {self.class_name}.run(...)')
         if after is not None:
@@ -274,6 +291,7 @@ class Chain(MutableParameters):
             notifier: Dict = notifier.dict()
         elif isinstance(notifier, str):
             notifier: Dict = dict(notifier=notifier)
+        step_parallelize: Parallelize = Parallelize.threads if step_parallelize else Parallelize.sync
 
         chain_exn: ChainExecution = ChainExecution(
             chain_template=self.clone(),
@@ -289,19 +307,23 @@ class Chain(MutableParameters):
                 max_workers=1,
             )
             fut: Future = dispatch(
-                self._execute_chain,
-                exn_name=exn_name,
-                verbosity=verbosity,
-                tracker=tracker.dict(),
-                notifier=notifier,
-                chain_exn=chain_exn,
-                after=after,
-                after_wait=after_wait,
-                step_wait=step_wait,
-                step_wait_jitter=step_wait_jitter,
-                executor=chain_exn._executor,
+                partial(
+                    self._execute_chain,
+                    executor=executor,
+                    exn_name=exn_name,
+                    verbosity=verbosity,
+                    tracker=tracker.dict(),
+                    notifier=notifier,
+                    chain_exn=chain_exn,
+                    after=after,
+                    after_wait=after_wait,
+                    step_wait=step_wait,
+                    step_wait_jitter=step_wait_jitter,
+                    step_parallelize=step_parallelize,
+                    **kwargs,
+                ),
                 parallelize=parallelize,
-                **kwargs,
+                executor=chain_exn._executor,
             )
         except KeyboardInterrupt as e:
             chain_exn.stop(force=True)
@@ -321,6 +343,8 @@ class Chain(MutableParameters):
             after_wait: conint(ge=0),
             step_wait: confloat(ge=0.0),
             step_wait_jitter: confloat(gt=0.0),
+            step_parallelize: Literal[Parallelize.sync, Parallelize.threads],
+            executor: Optional[Any],
             **kwargs,
     ) -> NoReturn:
         if after is not None:
@@ -346,6 +370,7 @@ class Chain(MutableParameters):
         )
         all_kwargs: Dict = {**kwargs}
         step_i, step = 0, self.steps[0]
+
         try:
             chain_exn.started_at = timer.start_datetime
             info_logger(
@@ -354,77 +379,70 @@ class Chain(MutableParameters):
                 f'thread#{threading.get_ident()} '
                 f'at {StringUtil.now()}.'
             )
-            for step_i, step in enumerate(self.steps):
-                if chain_exn.status is Status.STOPPED:
-                    break
-                chain_exn.status = Status.RUNNING
-                debug_logger(
-                    f'Running {exn_name}'
-                    f'Step {StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}: '
-                    f'"{step.class_name}"...'
-                )
-                chain_exn_pbar.set_description(
-                    desc=f'{exn_name}: Running "{step.class_name}" '
-                )
-                step: Step = step.clone()
-                ## Start running the step:
-                step_timer: Timer = Timer(silent=True)
-                step_timer.start()
-                step_inputs: Dict = self._create_step_inputs(
-                    exn_name=exn_name,
-                    step=step,
-                    step_i=step_i,
-                    num_steps=self.num_steps,
-                    all_kwargs=all_kwargs,
-                )
-                step_exn: StepExecution = StepExecution(
-                    step_template=step,
-                    inputs=step_inputs,
-                    started_at=step_timer.start_datetime,
-                    status=Status.RUNNING,
-                )
-                step.tracker = tracker  ## Set the tracker for use by the step's exeuction.
-                step.verbosity = verbosity
-                step.info('')  ## Adds a newline
-                try:
-                    ## Actually run the step:
-                    step_outputs: Dict = step.run(**step_inputs)
-                    if not isinstance(step_outputs, dict):
-                        raise ValueError(
-                            f'{exn_name} Step {StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps} '
-                            f'"{step.class_name}" '
-                            f'should return a dict; found {type_str(step_outputs)}'
-                        )
-                    step_exn.outputs = step_outputs
-                    step_exn.status = Status.SUCCEEDED
+            if step_parallelize is Parallelize.sync:
+                ## Run sequentially:
+                for step_i, step in enumerate(self.steps):
+                    if chain_exn.status is Status.STOPPED:
+                        break
+                    chain_exn.status = Status.RUNNING
+                    chain_exn_pbar.set_description(
+                        desc=f'{exn_name}: Running "{step.class_name}" '
+                    )
+                    step_exn: StepExecution = self._execute_step(
+                        exn_name=exn_name,
+                        chain_exn=chain_exn,
+                        step=step.clone(),
+                        step_i=step_i,
+                        executor=executor,
+                        all_kwargs=all_kwargs,
+                        tracker=tracker,
+                        verbosity=verbosity,
+                        debug_logger=debug_logger,
+                        step_wait=step_wait,
+                        step_wait_jitter=step_wait_jitter,
+                    )
                     all_kwargs: Dict = {
                         **all_kwargs,
-                        **step_outputs,
+                        **step_exn.outputs,
                     }
-                    debug_logger(
-                        f'...Step '
-                        f'[{StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}] '
-                        f'({step.class_name}) '
-                        f'completed in {step_timer.time_taken_str}.'
-                    )
-                    debug_logger(
-                        f'Outputs:\n{str(step_outputs)}'
-                    )
-                    debug_logger('═' * 72)
-                    time.sleep(np.random.uniform(
-                        step_wait - step_wait * step_wait_jitter,
-                        step_wait + step_wait * step_wait_jitter,
-                    ))
-                except Exception as e:
-                    step_exn.status = Status.FAILED
-                    raise e
-                finally:
-                    step_timer.stop()
-                    step_exn.completed_at = step_timer.end_datetime
-                    step.tracker = None  ## Unset the tracker
-                    chain_exn.steps.append(step_exn)
                     chain_exn_pbar.update(1)
-                    gc.collect()
+            else:
+                ## Run all concurrently:
+                chain_steps_executor: Optional[Any] = dispatch_executor(
+                    parallelize=step_parallelize,
+                    max_workers=self.num_steps,
+                )
+                chain_exn_pbar.set_description(
+                    desc=f'{exn_name}: Running {self.num_steps} steps '
+                )
+                chain_exn.status = Status.RUNNING
+                step_exn_futs = []
+                for step_i, step in enumerate(self.steps):
+                    if chain_exn.status is Status.STOPPED:
+                        break
+                    step_exn_futs.append(dispatch(
+                        partial(
+                            self._execute_step,
+                            exn_name=exn_name,
+                            chain_exn=chain_exn,
+                            step=step.clone(),
+                            step_i=step_i,
+                            executor=executor,
+                            all_kwargs=all_kwargs,
+                            tracker=tracker,
+                            verbosity=verbosity,
+                            debug_logger=debug_logger,
+                            step_wait=step_wait,
+                            step_wait_jitter=step_wait_jitter,
+                        ),
+                        parallelize=step_parallelize,
+                        executor=chain_steps_executor,
+                    ))
+                for step_exn in accumulate(step_exn_futs, progress_bar=chain_exn_pbar):
+                    all_kwargs: Dict = {
+                        **all_kwargs,
+                        **step_exn.outputs,
+                    }
             if chain_exn.num_executed_steps == self.num_steps:
                 ## All steps were executed, successfully.
                 ## If we stopped, it means we stopped during the last step, which executed successfully...in this case
@@ -438,6 +456,7 @@ class Chain(MutableParameters):
         finally:
             timer.stop()
             chain_exn.completed_at = timer.end_datetime
+            stop_executor(chain_steps_executor)
             if chain_exn.success():
                 info_logger(
                     f'\n{exn_name}: Execution succeeded. '
@@ -467,12 +486,89 @@ class Chain(MutableParameters):
                 chain_exn._executor = None
                 stop_executor(_executor, force=True)  ## Stop the thread forcefully
 
+    def _execute_step(
+            self,
+            *,
+            exn_name: Optional[constr(min_length=1)],
+            chain_exn: ChainExecution,
+            step: Step,
+            step_i: int,
+            all_kwargs: Dict,
+            executor: Optional[Any],
+            verbosity: conint(ge=0),
+            tracker: Tracker,
+            debug_logger: Callable,
+            step_wait: float,
+            step_wait_jitter: float,
+    ) -> StepExecution:
+        debug_logger(
+            f'Running {exn_name}'
+            f'Step {StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}: '
+            f'"{step.class_name}"...'
+        )
+        ## Start running the step:
+        step_timer: Timer = Timer(silent=True)
+        step_timer.start()
+        step_inputs: Dict = self._create_step_inputs(
+            exn_name=exn_name,
+            step=step,
+            step_i=step_i,
+            num_steps=self.num_steps,
+            all_kwargs={
+                'executor': executor,
+                **all_kwargs,
+            },
+        )
+        step_exn: StepExecution = StepExecution(
+            step_template=step,
+            inputs=remove_keys(step_inputs, ['executor']),
+            started_at=step_timer.start_datetime,
+            status=Status.RUNNING,
+        )
+        step.tracker = tracker  ## Set the tracker for use by the step's exeuction.
+        step.verbosity = verbosity
+        step.info('')  ## Adds a newline
+        try:
+            ## Actually run the step:
+            step_outputs: Dict = step.run(**step_inputs)
+            if not isinstance(step_outputs, dict):
+                raise ValueError(
+                    f'{exn_name} Step {StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps} '
+                    f'"{step.class_name}" '
+                    f'should return a dict; found {type_str(step_outputs)}'
+                )
+            step_exn.outputs = step_outputs
+            step_exn.status = Status.SUCCEEDED
+            debug_logger(
+                f'...Step '
+                f'[{StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}] '
+                f'({step.class_name}) '
+                f'completed in {step_timer.time_taken_str}.'
+            )
+            debug_logger(
+                f'Outputs:\n{str(step_outputs)}'
+            )
+            debug_logger('═' * 72)
+            time.sleep(np.random.uniform(
+                step_wait - step_wait * step_wait_jitter,
+                step_wait + step_wait * step_wait_jitter,
+            ))
+            chain_exn.steps.append(step_exn)
+            return step_exn
+        except Exception as e:
+            step_exn.status = Status.FAILED
+            raise e
+        finally:
+            step_timer.stop()
+            step_exn.completed_at = step_timer.end_datetime
+            step.tracker = None  ## Unset the tracker
+            gc.collect()
+
     def copy(self) -> Chain:
         return self.update_params(steps=[Step.of(step.dict()) for step in self.steps])
 
-    @classmethod
+    @staticmethod
     def _create_step_inputs(
-            cls,
             exn_name: Optional[constr(min_length=1)],
             step: Step,
             step_i: int,
@@ -487,7 +583,7 @@ class Chain(MutableParameters):
             for param, val in all_kwargs.items()
             if param in step.run_fn_spec.args_and_kwargs
         }
-        if isinstance(step, ChainStep):
+        if isinstance(step, ChainStep) and exn_name is not None:
             step_inputs['exn_name']: str = \
                 f'({exn_name}: Step {StringUtil.pad_zeros(step_i + 1, num_steps)}/{num_steps})'
         missing_keys: Set[str] = set(step.run_fn_spec.required_args_and_kwargs) - set(step_inputs.keys())
@@ -673,3 +769,9 @@ class ChainStep(Step):
         assert isinstance(outputs, dict)
         outputs['__exn__'] = chain_exn
         return outputs
+
+
+class ParallelStep(Chain):
+    def run(self, **kwargs) -> Dict:
+        kwargs['step_parallelize'] = True
+        return get_result(super(ParallelStep, self).run(**kwargs))
