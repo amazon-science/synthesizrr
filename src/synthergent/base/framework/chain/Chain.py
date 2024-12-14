@@ -6,8 +6,7 @@ import time, traceback, pickle, gc, os, json
 from synthergent.base.util import Registry, MutableParameters, Parameters, set_param_from_alias, is_list_like, as_list, \
     random_sample, safe_validate_arguments, format_exception_msg, StringUtil, get_fn_spec, Timer, type_str, \
     run_concurrent, get_result, Future, get_default, FunctionSpec, dispatch, is_function, remove_keys, \
-    ProgressBar, stop_executor, only_item, dispatch_executor, ThreadPoolExecutor, ProcessPoolExecutor, \
-    accumulate, accumulate_iter
+    ProgressBar, stop_executor, only_item, dispatch_executor, Executor, accumulate, accumulate_iter, check_isinstance
 from synthergent.base.data import FileMetadata, ScalableDataFrame, ScalableSeries, Asset
 from synthergent.base.constants import Status, Parallelize, Alias, COMPLETED_STATUSES
 from synthergent.base.util.notify import Notifier
@@ -262,7 +261,6 @@ class Chain(MutableParameters):
             after_wait: conint(ge=0) = 15,
             step_wait: confloat(ge=0.0) = 0.0,
             step_wait_jitter: confloat(gt=0.0) = 0.8,
-            step_parallelize: bool = False,
             executor: Optional[Any] = None,
             verbosity: conint(ge=0) = 1,
             **kwargs,
@@ -276,7 +274,6 @@ class Chain(MutableParameters):
         after_wait: (Default: 15) number of seconds to pause while waiting for a previous execution to end.
         step_wait: (Default: 0) numer of seconds to wait between steps.
         step_wait_jitter: (Default: 0.8) fluctuation in step_wait time (useful when running concurrent executions).
-        step_parallelize: (Default: False) whether to run all steps in parallel.
         executor: (Optional) common executor usable within each Step. Can be shared between different chain executions to
          restrict resource usage.
         verbosity: Verbosity level, forwarded to each Step.
@@ -291,7 +288,6 @@ class Chain(MutableParameters):
             notifier: Dict = notifier.dict()
         elif isinstance(notifier, str):
             notifier: Dict = dict(notifier=notifier)
-        step_parallelize: Parallelize = Parallelize.threads if step_parallelize else Parallelize.sync
 
         chain_exn: ChainExecution = ChainExecution(
             chain_template=self.clone(),
@@ -301,9 +297,10 @@ class Chain(MutableParameters):
             status=Status.PENDING,
         )
         try:
-            parallelize: Parallelize = Parallelize.threads if background else Parallelize.sync
-            chain_exn._executor: Optional[ThreadPoolExecutor] = dispatch_executor(
-                parallelize=parallelize,
+            ## When background=True is passed, we want to unblock the interpreter to do other work or see outputs. 
+            main_interpreter_parallelize: Parallelize = Parallelize.threads if background else Parallelize.sync
+            chain_exn._executor: Optional[Executor] = dispatch_executor(
+                parallelize=main_interpreter_parallelize,
                 max_workers=1,
             )
             fut: Future = dispatch(
@@ -319,10 +316,9 @@ class Chain(MutableParameters):
                     after_wait=after_wait,
                     step_wait=step_wait,
                     step_wait_jitter=step_wait_jitter,
-                    step_parallelize=step_parallelize,
                     **kwargs,
                 ),
-                parallelize=parallelize,
+                parallelize=main_interpreter_parallelize,
                 executor=chain_exn._executor,
             )
         except KeyboardInterrupt as e:
@@ -343,7 +339,7 @@ class Chain(MutableParameters):
             after_wait: conint(ge=0),
             step_wait: confloat(ge=0.0),
             step_wait_jitter: confloat(gt=0.0),
-            step_parallelize: Literal[Parallelize.sync, Parallelize.threads],
+            step_parallelize: Optional[Parallelize] = Parallelize.sync,
             executor: Optional[Any],
             **kwargs,
     ) -> NoReturn:
@@ -363,6 +359,7 @@ class Chain(MutableParameters):
             unit='step',
             disable=False if verbosity >= 1 else True,
         )
+        chain_steps_executor: Optional = None
         error_logger, warning_logger, info_logger, debug_logger = self._get_chain_loggers(
             verbosity=verbosity,
             tracker=tracker,
@@ -379,7 +376,7 @@ class Chain(MutableParameters):
                 f'thread#{threading.get_ident()} '
                 f'at {StringUtil.now()}.'
             )
-            if step_parallelize is Parallelize.sync:
+            if step_parallelize is Parallelize.sync and not isinstance(self, ParallelMap):
                 ## Run sequentially:
                 for step_i, step in enumerate(self.steps):
                     if chain_exn.status is Status.STOPPED:
@@ -407,7 +404,8 @@ class Chain(MutableParameters):
                     }
                     chain_exn_pbar.update(1)
             else:
-                ## Run all concurrently:
+                ## Run all steps in the chain concurrently:
+                assert isinstance(self, ParallelMap)
                 chain_steps_executor: Optional[Any] = dispatch_executor(
                     parallelize=step_parallelize,
                     max_workers=self.num_steps,
@@ -438,11 +436,23 @@ class Chain(MutableParameters):
                         parallelize=step_parallelize,
                         executor=chain_steps_executor,
                     ))
-                for step_exn in accumulate(step_exn_futs, progress_bar=chain_exn_pbar):
-                    all_kwargs: Dict = {
-                        **all_kwargs,
-                        **step_exn.outputs,
+                step_exns: List[StepExecution] = accumulate(step_exn_futs, progress_bar=chain_exn_pbar)
+                if self.combine == 'list':
+                    all_kwargs[self.output_key]: List[Dict] = [step_exn.outputs for step_exn in step_exns]
+                elif self.combine == 'dict':
+                    all_kwargs[self.output_key]: Dict[int, Dict] = {
+                        step_i: step_exn.outputs
+                        for step_i, step_exn in enumerate(step_exns)
                     }
+                elif self.combine == 'merge':
+                    all_kwargs[self.output_key]: Dict = {}
+                    for step_exn in step_exns:
+                        all_kwargs[self.output_key] = {
+                            **all_kwargs[self.output_key],
+                            **step_exn.outputs,
+                        }
+                else:
+                    raise NotImplementedError(f'Invalid value for {self.class_name}.combine: {self.combine}')
             if chain_exn.num_executed_steps == self.num_steps:
                 ## All steps were executed, successfully.
                 ## If we stopped, it means we stopped during the last step, which executed successfully...in this case
@@ -682,7 +692,7 @@ class ChainExecution(MutableParameters):
     status: Status
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    _executor: Optional[ThreadPoolExecutor] = None
+    _executor: Optional[Executor] = None
     error: Optional[Exception] = None
 
     @root_validator(pre=False)
@@ -771,7 +781,11 @@ class ChainStep(Step):
         return outputs
 
 
-class ParallelStep(Chain):
+class ParallelMap(Chain):
+    combine: Literal['list', 'dict', 'merge'] = 'list'
+    output_key: str = 'parallel_map_results'
+    parallelize: Parallelize = Parallelize.threads
+
     def run(self, **kwargs) -> Dict:
-        kwargs['step_parallelize'] = True
-        return get_result(super(ParallelStep, self).run(**kwargs))
+        kwargs['step_parallelize'] = self.parallelize
+        return get_result(super(ParallelMap, self).run(**kwargs))

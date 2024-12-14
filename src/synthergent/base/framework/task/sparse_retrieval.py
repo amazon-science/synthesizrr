@@ -7,7 +7,7 @@ from synthergent.base.util import is_list_like, Parameters, MappedParameters, op
     MutableParameters, Schema, only_item, set_param_from_alias, wait, as_tuple, as_list, str_normalize, \
     INDEX_COL_DEFAULT_NAME, AutoEnum, auto, safe_validate_arguments, type_str, Timer, StringUtil, get_default, \
     dispatch, dispatch_executor, accumulate, accumulate_iter, ProgressBar, best_k, keep_keys, format_exception_msg, \
-    ThreadPoolExecutor, ProcessPoolExecutor, iter_batches, get_result, check_isinstance, Log
+    Executor, iter_batches, get_result, check_isinstance, Log
 from synthergent.base.framework.ray_base import ActorComposite
 from synthergent.base.data import ScalableDataFrame, ScalableSeries, ScalableSeriesRawType, ScalableDataFrameRawType, \
     FileMetadata
@@ -210,7 +210,7 @@ class BM25IndexStore(MutableParameters, ABC):
             text_col: str,
             indexing_batch_size: int,
             indexing_parallelize: Parallelize,
-            executor: Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor]],
+            executor: Optional[Executor],
             **kwargs,
     ):
         documents: ScalableDataFrame = ScalableDataFrame.of(documents, layout=DataLayout.PANDAS)
@@ -420,7 +420,7 @@ def _create_index_store(
         params: BM25IndexStoreParams,
         documents: Optional[RetrievalCorpus],
         *,
-        executor: Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor]] = None,
+        executor: Optional[Executor] = None,
         **kwargs
 ) -> BM25IndexStore:
     index_store: BM25IndexStore = params.initialize()

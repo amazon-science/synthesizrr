@@ -4,14 +4,12 @@ from abc import abstractmethod, ABC
 import math, time, warnings, json, gzip, base64
 import numpy as np, pandas as pd, multiprocessing as mp, threading as th
 from concurrent.futures._base import Future
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from pandas.core.frame import DataFrame as PandasDataFrame
 import dask.dataframe as dd
 from dask.dataframe.core import DataFrame as DaskDataFrame
 from synthergent.base.util import as_list, resolve_sample_size, SampleSizeType, Registry, StringUtil, get_default, \
     classproperty, accumulate, dispatch, MutableParameters, safe_validate_arguments, is_done, optional_dependency, \
-    multiple_are_not_none, all_are_not_none, is_list_of_dict_like, Parameters, dispatch_executor, \
-    RestrictedConcurrencyThreadPoolExecutor, ActorPoolExecutor
+    multiple_are_not_none, all_are_not_none, is_list_of_dict_like, Parameters, dispatch_executor, Executor
 from synthergent.base.constants import DataLayout, SDF_DATA_LAYOUT_PRIORITY, LAZY_SDF_DATA_LAYOUTS, Parallelize, \
     CompressionEngine, Alias
 from synthergent.base.data.sdf.ScalableSeries import ScalableSeries, ScalableSeriesOrRaw
@@ -466,7 +464,7 @@ class ScalableDataFrame(Registry, ABC):
         ## docstring for chunk_size: maximum size of each ScalableDataFrame in bytes (int) or string (e.g. "10MB").
         try:
             mapped_sdf_chunks: Deque[Dict[str, Union[int, Future]]] = deque()
-            executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]] = self._stream_get_executor(
+            executor: Optional[Executor] = self._stream_get_executor(
                 map=map,
                 parallelize=parallelize,
                 num_workers=num_workers,
@@ -1087,7 +1085,7 @@ class ScalableDataFrame(Registry, ABC):
             parallelize: Parallelize,
             num_workers: conint(ge=1),
             map_executor: Literal['spawn'],
-    ) -> Optional:
+    ) -> Optional[Executor]:
         if map is not None:
             if parallelize in {Parallelize.processes, Parallelize.threads}:
                 assert map_executor == 'spawn'
@@ -1100,7 +1098,7 @@ class ScalableDataFrame(Registry, ABC):
     @classmethod
     def _stream_cleanup_executor(
             cls,
-            executor: Union[ThreadPoolExecutor, ProcessPoolExecutor],
+            executor: Executor,
             map_executor: Literal['spawn'] = 'spawn',
     ):
         if map_executor == 'spawn':
@@ -1119,7 +1117,7 @@ class ScalableDataFrame(Registry, ABC):
             map_failure: Literal['raise', 'drop'],
             stream_as: Optional[DataLayout],
             raw: bool,
-            executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]],
+            executor: Optional[Executor],
     ) -> Optional[ScalableDataFrame]:
         ## Push the chunk onto the queue for processing. At the same time, dequeue the head chunk if it has
         ## finished processing, or if the queue length has been exceeded. If neither of these conditions is
@@ -1159,7 +1157,7 @@ class ScalableDataFrame(Registry, ABC):
             map_kwargs: Dict,
             map_failure: Literal['raise', 'drop'],
             parallelize: Parallelize,
-            executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]]
+            executor: Optional[Executor]
     ):
         ## Adds the chunk to the queue for processing
         try:

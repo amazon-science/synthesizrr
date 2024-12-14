@@ -1,12 +1,11 @@
 from typing import *
 import math, io, ray, numpy as np, pandas as pd
 from concurrent.futures._base import Future
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from pandas.core.frame import Series as PandasSeries, DataFrame as PandasDataFrame
 import dask.dataframe as dd
 from dask.dataframe.core import Scalar as DaskScalar, Series as DaskSeries, DataFrame as DaskDataFrame
 from synthergent.base.util import multiple_are_not_none, all_are_none, is_function, wrap_fn_output, \
-    get_default, RayDaskPersistWaitCallback, get_current_fn_name, accumulate, safe_validate_arguments, Log
+    get_default, RayDaskPersistWaitCallback, get_current_fn_name, accumulate, safe_validate_arguments, Log, Executor
 from synthergent.base.constants import DataLayout, Parallelize
 from synthergent.base.data.sdf.ScalableSeries import ScalableSeries
 from synthergent.base.data.sdf.ScalableDataFrame import ScalableDataFrame, ScalableDataFrameOrRaw, is_scalable, \
@@ -236,7 +235,7 @@ class DaskScalableDataFrame(ScalableDataFrame):
             df_partitions: Deque[PandasDataFrame] = deque()
             sdfs: List[ScalableDataFrame] = []
             mapped_sdf_chunks: Deque[Dict[str, Union[int, Future]]] = deque()
-            executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]] = self._stream_get_executor(
+            executor: Optional[Executor] = self._stream_get_executor(
                 map=map,
                 parallelize=parallelize,
                 num_workers=num_workers,

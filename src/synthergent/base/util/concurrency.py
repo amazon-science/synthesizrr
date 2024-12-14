@@ -9,7 +9,6 @@ import asyncio, ctypes
 from threading import Semaphore, Thread, Lock
 import multiprocessing as mp
 from concurrent.futures._base import Future, Executor
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait as wait_future
 from concurrent.futures.thread import BrokenThreadPool
 from concurrent.futures.process import BrokenProcessPool
 import ray
@@ -275,104 +274,6 @@ def run_concurrent(
         raise e
 
 
-_GLOBAL_PROCESS_POOL_EXECUTOR: ProcessPoolExecutor = ProcessPoolExecutor(
-    max_workers=max(1, min(32, mp.cpu_count() - 1))
-)
-
-
-def run_parallel(
-        fn,
-        *args,
-        executor: Optional[ProcessPoolExecutor] = None,
-        **kwargs,
-):
-    global _GLOBAL_PROCESS_POOL_EXECUTOR
-    if executor is None:
-        executor: ProcessPoolExecutor = _GLOBAL_PROCESS_POOL_EXECUTOR
-    try:
-        # print(f'Running {fn_str(fn)} using {Parallelize.threads} with max_workers={executor._max_workers}')
-        return executor.submit(fn, *args, **kwargs)  ## return a future
-    except BrokenProcessPool as e:
-        if executor is _GLOBAL_PROCESS_POOL_EXECUTOR:
-            executor = ProcessPoolExecutor(max_workers=_GLOBAL_PROCESS_POOL_EXECUTOR._max_workers)
-            del _GLOBAL_PROCESS_POOL_EXECUTOR
-            _GLOBAL_PROCESS_POOL_EXECUTOR = executor
-            return executor.submit(fn, *args, **kwargs)  ## return a future
-        raise e
-
-
-def kill_thread(tid: int):
-    """
-    Dirty hack to *actually* stop a thread: raises an exception in threads with this thread id.
-    How it works:
-    - kill_thread function uses ctypes.pythonapi.PyThreadState_SetAsyncExc to raise an exception in a thread.
-    - By passing exctype, it attempts to terminate the thread.
-
-    Risks and Considerations
-    - Resource Leaks: If the thread holds a lock or other resources, these may not be properly released.
-    - Data Corruption: If the thread is manipulating shared data, partial updates may lead to data corruption.
-    - Deadlocks: If the thread is killed while holding a lock that other threads are waiting on, it can cause a
-        deadlock.
-    - Undefined Behavior: The Python runtime does not expect threads to be killed in this manner, which may cause
-        undefined behavior.
-    """
-    exctype: Type[BaseException] = ThreadKilledSystemException
-    if not issubclass(exctype, BaseException):
-        raise TypeError("Only types derived from BaseException are allowed")
-    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
-    logging.debug(f'...killed thread ID: {tid}')
-    if res == 0:
-        raise ValueError(f"Invalid thread ID: {tid}")
-    elif res != 1:
-        # If it returns a number greater than one, you're in trouble,
-        # and you should call it again with exc=NULL to revert the effect
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), None)
-        raise SystemError("PyThreadState_SetAsyncExc failed")
-
-
-def worker_ids(executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]]) -> Set[int]:
-    if isinstance(executor, ThreadPoolExecutor):
-        return {th.ident for th in executor._threads}
-    elif isinstance(executor, ProcessPoolExecutor):
-        return {p.pid for p in executor._processes.values()}
-    raise NotImplementedError(f'Cannot get worker ids for executor of type: {executor}')
-
-
-def stop_executor(
-        executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]],
-        force: bool = True,  ## Forcefully terminate, might lead to work being lost.
-):
-    if executor is not None:
-        if isinstance(executor, ThreadPoolExecutor):
-            suppress_ThreadKilledSystemException()
-            if force:
-                executor.shutdown(wait=False)  ## Cancels pending items
-                for tid in worker_ids(executor):
-                    kill_thread(tid)  ## Note; after calling this, you can still submit
-                executor.shutdown(wait=False)  ## Note; after calling this, you cannot submit
-            else:
-                executor.shutdown(wait=True)
-            del executor
-        elif isinstance(executor, ProcessPoolExecutor):
-            if force:
-                for process in executor._processes.values():  # Internal Process objects
-                    process.terminate()  # Forcefully terminate the process
-
-                # Wait for the processes to clean up
-                for process in executor._processes.values():
-                    process.join()
-                executor.shutdown(wait=True, cancel_futures=True)
-            else:
-                executor.shutdown(wait=True, cancel_futures=True)
-            del executor
-        elif isinstance(executor, ActorPoolExecutor):
-            for actor in executor._actors:
-                assert isinstance(actor, ActorProxy)
-                actor.stop(cancel_futures=force)
-                del actor
-            del executor
-
-
 def actor_process_main(cls_bytes, init_args, init_kwargs, command_queue, result_queue):
     cls = cloudpickle.loads(cls_bytes)
     instance = None
@@ -421,7 +322,7 @@ class ActorProxy:
         # Create the process using the fork context
         cls_bytes = cloudpickle.dumps(cls)
         self._cls_name = cls.__name__
-        self._process = ctx.Process(
+        self._process: ctx.Process = ctx.Process(
             target=actor_process_main,
             args=(cls_bytes, init_args, init_kwargs, self._command_queue, self._result_queue)
         )
@@ -649,7 +550,7 @@ class ActorPoolExecutor(Executor):
     ):
         if max_workers is None:
             max_workers = mp.cpu_count() - 1
-        self._actors: List[Any] = [TaskActor.remote() for _ in range(max_workers)]
+        self._actors: List[ActorProxy] = [TaskActor.remote() for _ in range(max_workers)]
         self._actor_index = 0
         self._max_workers = max_workers
         self._load_balancing_strategy: LoadBalancingStrategy = LoadBalancingStrategy(load_balancing_strategy)
@@ -709,6 +610,106 @@ class ActorPoolExecutor(Executor):
             yield fut.result(timeout=timeout)
 
 
+_GLOBAL_PROCESS_POOL_EXECUTOR: ActorPoolExecutor = ActorPoolExecutor(
+    max_workers=max(1, min(32, mp.cpu_count() - 1))
+)
+
+
+def run_parallel(
+        fn,
+        *args,
+        executor: Optional[ActorPoolExecutor] = None,
+        **kwargs,
+):
+    global _GLOBAL_PROCESS_POOL_EXECUTOR
+    if executor is None:
+        executor: ActorPoolExecutor = _GLOBAL_PROCESS_POOL_EXECUTOR
+    try:
+        # print(f'Running {fn_str(fn)} using {Parallelize.threads} with max_workers={executor._max_workers}')
+        return executor.submit(fn, *args, **kwargs)  ## return a future
+    except BrokenProcessPool as e:
+        if executor is _GLOBAL_PROCESS_POOL_EXECUTOR:
+            executor = ActorPoolExecutor(max_workers=_GLOBAL_PROCESS_POOL_EXECUTOR._max_workers)
+            del _GLOBAL_PROCESS_POOL_EXECUTOR
+            _GLOBAL_PROCESS_POOL_EXECUTOR = executor
+            return executor.submit(fn, *args, **kwargs)  ## return a future
+        raise e
+
+
+def kill_thread(tid: int):
+    """
+    Dirty hack to *actually* stop a thread: raises an exception in threads with this thread id.
+    How it works:
+    - kill_thread function uses ctypes.pythonapi.PyThreadState_SetAsyncExc to raise an exception in a thread.
+    - By passing exctype, it attempts to terminate the thread.
+
+    Risks and Considerations
+    - Resource Leaks: If the thread holds a lock or other resources, these may not be properly released.
+    - Data Corruption: If the thread is manipulating shared data, partial updates may lead to data corruption.
+    - Deadlocks: If the thread is killed while holding a lock that other threads are waiting on, it can cause a
+        deadlock.
+    - Undefined Behavior: The Python runtime does not expect threads to be killed in this manner, which may cause
+        undefined behavior.
+    """
+    exctype: Type[BaseException] = ThreadKilledSystemException
+    if not issubclass(exctype, BaseException):
+        raise TypeError("Only types derived from BaseException are allowed")
+    res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
+    logging.debug(f'...killed thread ID: {tid}')
+    if res == 0:
+        raise ValueError(f"Invalid thread ID: {tid}")
+    elif res != 1:
+        # If it returns a number greater than one, you're in trouble,
+        # and you should call it again with exc=NULL to revert the effect
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), None)
+        raise SystemError("PyThreadState_SetAsyncExc failed")
+
+
+def worker_ids(executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor, ActorPoolExecutor]]) -> Set[int]:
+    if isinstance(executor, ThreadPoolExecutor):
+        return {th.ident for th in executor._threads}
+    elif isinstance(executor, ProcessPoolExecutor):
+        return {p.pid for p in executor._processes.values()}
+    elif isinstance(executor, ActorPoolExecutor):
+        return {_actor._process.pid for _actor in executor._actors}
+    raise NotImplementedError(f'Cannot get worker ids for executor of type: {executor}')
+
+
+def stop_executor(
+        executor: Optional[Executor],
+        force: bool = True,  ## Forcefully terminate, might lead to work being lost.
+):
+    if executor is not None:
+        if isinstance(executor, ThreadPoolExecutor):
+            suppress_ThreadKilledSystemException()
+            if force:
+                executor.shutdown(wait=False)  ## Cancels pending items
+                for tid in worker_ids(executor):
+                    kill_thread(tid)  ## Note; after calling this, you can still submit
+                executor.shutdown(wait=False)  ## Note; after calling this, you cannot submit
+            else:
+                executor.shutdown(wait=True)
+            del executor
+        elif isinstance(executor, ProcessPoolExecutor):
+            if force:
+                for process in executor._processes.values():  # Internal Process objects
+                    process.terminate()  # Forcefully terminate the process
+
+                # Wait for the processes to clean up
+                for process in executor._processes.values():
+                    process.join()
+                executor.shutdown(wait=True, cancel_futures=True)
+            else:
+                executor.shutdown(wait=True, cancel_futures=True)
+            del executor
+        elif isinstance(executor, ActorPoolExecutor):
+            for actor in executor._actors:
+                assert isinstance(actor, ActorProxy)
+                actor.stop(cancel_futures=force)
+                del actor
+            del executor
+
+
 @ray.remote(num_cpus=1)
 def _run_parallel_ray_executor(fn, *args, **kwargs):
     return fn(*args, **kwargs)
@@ -719,7 +720,7 @@ def _ray_asyncio_start_event_loop(loop):
     loop.run_forever()
 
 
-class RayPoolExecutor(Parameters):
+class RayPoolExecutor(Executor, Parameters):
     max_workers: Union[int, Literal[inf]]
     iter_wait: float = _RAY_ACCUMULATE_ITER_WAIT
     item_wait: float = _RAY_ACCUMULATE_ITEM_WAIT
@@ -835,7 +836,7 @@ def dispatch(
         parallelize: Parallelize,
         forward_parallelize: bool = False,
         delay: float = 0.0,
-        executor: Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor, RayPoolExecutor]] = None,
+        executor: Optional[Executor] = None,
         **kwargs
 ) -> Any:
     parallelize: Parallelize = Parallelize.from_str(parallelize)
@@ -859,7 +860,7 @@ def dispatch_executor(
         *,
         parallelize: Parallelize,
         **kwargs
-) -> Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor, RayPoolExecutor]]:
+) -> Optional[Executor]:
     parallelize: Parallelize = Parallelize.from_str(parallelize)
     set_param_from_alias(kwargs, param='max_workers', alias=['num_workers'], default=None)
     max_workers: Optional[int] = kwargs.pop('max_workers', None)
@@ -872,7 +873,7 @@ def dispatch_executor(
     elif parallelize is Parallelize.threads:
         return RestrictedConcurrencyThreadPoolExecutor(max_workers=max_workers, max_calls_per_second=max_calls_per_second)
     elif parallelize is Parallelize.processes:
-        return ProcessPoolExecutor(max_workers=max_workers)
+        return ActorPoolExecutor(max_workers=max_workers)
     elif parallelize is Parallelize.ray:
         return RayPoolExecutor(max_workers=max_workers)
     else:
