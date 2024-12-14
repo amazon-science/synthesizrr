@@ -2528,7 +2528,8 @@ class Registry(ABC):
                     continue
                 if is_abstract(subclass) and keep_abstract is False:
                     continue
-                available_subclasses.add(subclass)
+                if isinstance(subclass, type) and issubclass(subclass, cls):
+                    available_subclasses.add(subclass)
         return available_subclasses
 
     @classmethod

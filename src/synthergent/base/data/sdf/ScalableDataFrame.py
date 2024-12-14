@@ -11,8 +11,8 @@ from dask.dataframe.core import DataFrame as DaskDataFrame
 from synthergent.base.util import as_list, resolve_sample_size, SampleSizeType, Registry, StringUtil, get_default, \
     classproperty, accumulate, dispatch, MutableParameters, safe_validate_arguments, is_done, optional_dependency, \
     multiple_are_not_none, all_are_not_none, is_list_of_dict_like, Parameters
-from synthergent.base.constants import DataLayout, SDF_DATA_LAYOUT_PRIORITY, LAZY_SDF_DATA_LAYOUTS, Parallelize, CompressionEngine, \
-    Alias
+from synthergent.base.constants import DataLayout, SDF_DATA_LAYOUT_PRIORITY, LAZY_SDF_DATA_LAYOUTS, Parallelize, \
+    CompressionEngine, Alias
 from synthergent.base.data.sdf.ScalableSeries import ScalableSeries, ScalableSeriesOrRaw
 from pydantic import conint, constr, root_validator
 from pydantic.typing import Literal
@@ -114,7 +114,7 @@ class ScalableDataFrame(Registry, ABC):
         if ScalableDataFrameClass is None:
             raise ValueError(
                 f'Cannot create {ScalableDataFrame} subclass having layout "{layout}"; '
-                f'available subclasses are: {cls.subclasses()}'
+                f'available subclasses are: {ScalableDataFrame.subclasses()}'
             )
         ## When passed either raw data (in the correct format) or a ScalableDataFrame, the respective
         ## ScalableDataFrame subclass should be able to accept it.

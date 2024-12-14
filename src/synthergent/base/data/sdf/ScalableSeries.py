@@ -96,7 +96,7 @@ class ScalableSeries(Registry, ABC):
         if ScalableSeriesClass is None:
             raise ValueError(
                 f'Cannot create {ScalableSeries} subclass having layout "{layout}"; '
-                f'available subclasses are: {cls.subclasses()}'
+                f'available subclasses are: {ScalableSeries.subclasses()}'
             )
         ## When passed either raw data (in the correct format) or a ScalableSeries, the respective
         ## ScalableSeries subclass should be able to accept it.

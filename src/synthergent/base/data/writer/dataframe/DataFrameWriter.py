@@ -158,7 +158,7 @@ class DataFrameWriter(Writer, ABC):
             )
         else:
             ## Path is a directory:
-            if all_are_none(self.num_rows, self.num_chunks) or single_file is True:
+            if single_file is True or (sdf.npartitions == 1 and all_are_none(self.num_rows, self.num_chunks)):
                 ## Do not write multiple files:
                 if file_name is None:
                     raise ValueError(f'You must pass `file_name` when writing to local directory "{local_path}".')
@@ -222,7 +222,7 @@ class DataFrameWriter(Writer, ABC):
             )
         else:
             ## Path is a directory:
-            if all_are_none(self.num_rows, self.num_chunks) or single_file is True:
+            if single_file is True or (sdf.npartitions == 1 and all_are_none(self.num_rows, self.num_chunks)):
                 ## Do not write multiple files:
                 if file_name is None:
                     raise ValueError(f'You must pass `file_name` when writing to S3 directory "{s3_path}".')
