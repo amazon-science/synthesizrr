@@ -27,6 +27,37 @@ import threading
 import time, inspect, queue, uuid, cloudpickle, warnings
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait as wait_future
 
+
+class ThreadKilledSystemException(BaseException):
+    """Custom exception for killing threads."""
+    pass
+
+
+class ThreadKilledSystemExceptionFilter(logging.Filter):
+    def filter(self, record):
+        if record.exc_info:
+            exc_type = record.exc_info[0]
+            if exc_type.__name__ == 'ThreadKilledSystemException':
+                return False
+        return True
+
+
+def suppress_ThreadKilledSystemException():
+    for _logger_module in ['concurrent.futures', 'ipykernel', 'ipykernel.ipykernel']:
+        _logger = logging.getLogger(_logger_module)
+        _filter_exists: bool = False
+        for _filter in _logger.filters:
+            if _filter.__class__.__name__ == 'ThreadKilledSystemExceptionFilter':
+                _filter_exists: bool = True
+                # print(f'{_filter.__class__.__name__} exists in {_logger_module} filters')
+                break
+        if not _filter_exists:
+            _logger.addFilter(ThreadKilledSystemExceptionFilter())
+            # print(f'{ThreadKilledSystemExceptionFilter} added to {_logger_module} filters')
+
+
+suppress_ThreadKilledSystemException()
+
 _RAY_ACCUMULATE_ITEM_WAIT: float = 10e-3  ## 10ms
 _LOCAL_ACCUMULATE_ITEM_WAIT: float = 1e-3  ## 1ms
 
@@ -173,7 +204,7 @@ class RestrictedConcurrencyThreadPoolExecutor(ThreadPoolExecutor):
             self,
             max_workers: Optional[int] = None,
             *args,
-            max_calls_per_second: float = inf,
+            max_calls_per_second: float = float('inf'),
             **kwargs,
     ):
         if max_workers is None:
@@ -270,12 +301,12 @@ def run_parallel(
         raise e
 
 
-def kill_thread(tid: int, exctype: Type[BaseException]):
+def kill_thread(tid: int):
     """
     Dirty hack to *actually* stop a thread: raises an exception in threads with this thread id.
     How it works:
     - kill_thread function uses ctypes.pythonapi.PyThreadState_SetAsyncExc to raise an exception in a thread.
-    - By passing SystemExit, it attempts to terminate the thread.
+    - By passing exctype, it attempts to terminate the thread.
 
     Risks and Considerations
     - Resource Leaks: If the thread holds a lock or other resources, these may not be properly released.
@@ -285,6 +316,7 @@ def kill_thread(tid: int, exctype: Type[BaseException]):
     - Undefined Behavior: The Python runtime does not expect threads to be killed in this manner, which may cause
         undefined behavior.
     """
+    exctype: Type[BaseException] = ThreadKilledSystemException
     if not issubclass(exctype, BaseException):
         raise TypeError("Only types derived from BaseException are allowed")
     res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(tid), ctypes.py_object(exctype))
@@ -312,10 +344,11 @@ def stop_executor(
 ):
     if executor is not None:
         if isinstance(executor, ThreadPoolExecutor):
+            suppress_ThreadKilledSystemException()
             if force:
                 executor.shutdown(wait=False)  ## Cancels pending items
                 for tid in worker_ids(executor):
-                    kill_thread(tid, SystemExit)  ## Note; after calling this, you can still submit
+                    kill_thread(tid)  ## Note; after calling this, you can still submit
                 executor.shutdown(wait=False)  ## Note; after calling this, you cannot submit
             else:
                 executor.shutdown(wait=True)
@@ -331,6 +364,12 @@ def stop_executor(
                 executor.shutdown(wait=True, cancel_futures=True)
             else:
                 executor.shutdown(wait=True, cancel_futures=True)
+            del executor
+        elif isinstance(executor, ActorPoolExecutor):
+            for actor in executor._actors:
+                assert isinstance(actor, ActorProxy)
+                actor.stop(cancel_futures=force)
+                del actor
             del executor
 
 
@@ -817,6 +856,7 @@ def dispatch(
 
 
 def dispatch_executor(
+        *,
         parallelize: Parallelize,
         **kwargs
 ) -> Optional[Union[ProcessPoolExecutor, ThreadPoolExecutor, RayPoolExecutor]]:
@@ -827,14 +867,16 @@ def dispatch_executor(
     if max_workers is None:
         ## Uses the default executor for threads/processes/ray.
         return None
-    if parallelize is Parallelize.threads:
+    if parallelize is Parallelize.sync:
+        return None
+    elif parallelize is Parallelize.threads:
         return RestrictedConcurrencyThreadPoolExecutor(max_workers=max_workers, max_calls_per_second=max_calls_per_second)
     elif parallelize is Parallelize.processes:
         return ProcessPoolExecutor(max_workers=max_workers)
     elif parallelize is Parallelize.ray:
         return RayPoolExecutor(max_workers=max_workers)
     else:
-        return None
+        raise NotImplementedError(f'Unsupported: you cannot create an executor with {parallelize} parallelization.')
 
 
 def dispatch_apply(
@@ -1379,7 +1421,7 @@ def daemon(wait: float, exit_on_error: bool = False, sentinel: Optional[List] = 
         ## if you write two decorated functions `def say_hi` and `def say_bye`, they each gets a separate
         ## executor. The executor for `say_hi` will call `say_hi` repeatedly, and the executor for `say_bye` will call
         ## `say_bye` repeatedly; they will not interact.
-        executor = ThreadPoolExecutor(max_workers=1)
+        executor = RestrictedConcurrencyThreadPoolExecutor(max_workers=1)
 
         def run_function_forever(sentinel):
             while sentinel is None or len(sentinel) > 0:
