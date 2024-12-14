@@ -5,3 +5,4 @@ from synthergent.base.constants.FileConstants import *
 from synthergent.base.constants.AlgorithmConstants import *
 from synthergent.base.constants.MetricConstants import *
 from synthergent.base.constants.VisualizationConstants import *
+_LIBRARY_NAME: str = 'synthergent'

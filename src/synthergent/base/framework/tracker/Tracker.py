@@ -10,6 +10,7 @@ from synthergent.base.util import Parameters, MutableParameters, Registry, Fract
     set_param_from_alias, random_sample, format_exception_msg, optional_dependency, FileSystemUtil, JupyterNotebook
 from synthergent.base.constants import Alias
 from pydantic import root_validator, Extra, conint, constr
+from synthergent.base.constants import _LIBRARY_NAME
 
 Tracker = "Tracker"
 
@@ -30,7 +31,7 @@ class Tracker(MutableParameters, Registry, ABC):
         extra = Extra.ignore
 
     tracker_name: ClassVar[str]
-    DEFAULT_PROJECTS_BASE_DIR: ClassVar[str] = FileSystemUtil.expand_dir('~/litmus/tracker/')
+    DEFAULT_PROJECTS_BASE_DIR: ClassVar[str] = FileSystemUtil.expand_dir(f'~/{_LIBRARY_NAME}/tracker/')
     DEFAULT_PROJECT: ClassVar[str] = 'default'
     DEFAULT_EXPERIMENT: ClassVar[str] = 'logs'
 

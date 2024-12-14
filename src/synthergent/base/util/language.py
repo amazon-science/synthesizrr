@@ -1,7 +1,8 @@
 import gc
 from typing import *
 import typing, types, typing_extensions
-import sys, os, time, functools, datetime as dt, string, inspect, re, random, math, ast, warnings, logging, json
+import sys, os, time, functools, datetime as dt, string, inspect, re, random, math, ast, warnings, logging, json, ctypes, \
+    tempfile, io
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_scalar as pd_is_scalar
@@ -3341,7 +3342,7 @@ def ignore_warnings_and_stdout():
 @contextmanager
 def ignore_logging(disable_upto: int = logging.CRITICAL):
     prev_disable_level: int = logging.root.manager.disable
-    logging.disable(disable_upto)
+    logging.disable(disable_upto + 1)
     try:
         yield
     finally:

@@ -3,6 +3,7 @@ import io, random, re, math, os, time, boto3, botocore, fnmatch, pickle
 from urllib.parse import urlparse, ParseResult
 from synthergent.base.util.language import as_list, is_list_like, format_exception_msg, any_are_none, remove_values
 from synthergent.base.util import Utility, StringUtil, FileSystemUtil, Log, Timer, shuffle_items
+from synthergent.base.constants import _LIBRARY_NAME
 
 
 class S3Util(Utility):
@@ -416,7 +417,7 @@ class S3Util(Utility):
             if len(s3_fpaths_to_download) == 0:
                 return True
             time.sleep(random.randint(0, 30000) / 1000)  ## Wait randomly between 0 and 30 seconds to acquire locks.
-            lock_file: str = os.path.join(destination_local_dir, 'litmus-download.lock')
+            lock_file: str = os.path.join(destination_local_dir, f'{_LIBRARY_NAME}-download.lock')
             if not FileSystemUtil.file_exists(lock_file):
                 ## Acquire lock:
                 try:

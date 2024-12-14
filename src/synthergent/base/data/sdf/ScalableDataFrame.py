@@ -10,7 +10,8 @@ import dask.dataframe as dd
 from dask.dataframe.core import DataFrame as DaskDataFrame
 from synthergent.base.util import as_list, resolve_sample_size, SampleSizeType, Registry, StringUtil, get_default, \
     classproperty, accumulate, dispatch, MutableParameters, safe_validate_arguments, is_done, optional_dependency, \
-    multiple_are_not_none, all_are_not_none, is_list_of_dict_like, Parameters
+    multiple_are_not_none, all_are_not_none, is_list_of_dict_like, Parameters, dispatch_executor, \
+    RestrictedConcurrencyThreadPoolExecutor, ActorPoolExecutor
 from synthergent.base.constants import DataLayout, SDF_DATA_LAYOUT_PRIORITY, LAZY_SDF_DATA_LAYOUTS, Parallelize, \
     CompressionEngine, Alias
 from synthergent.base.data.sdf.ScalableSeries import ScalableSeries, ScalableSeriesOrRaw
@@ -1086,20 +1087,14 @@ class ScalableDataFrame(Registry, ABC):
             parallelize: Parallelize,
             num_workers: conint(ge=1),
             map_executor: Literal['spawn'],
-    ) -> Optional[Union[ThreadPoolExecutor, ProcessPoolExecutor]]:
+    ) -> Optional:
         if map is not None:
-            if parallelize is Parallelize.sync:
-                return None
-            if parallelize is Parallelize.processes:
+            if parallelize in {Parallelize.processes, Parallelize.threads}:
                 assert map_executor == 'spawn'
-                return ProcessPoolExecutor(max_workers=num_workers)
-            elif parallelize is Parallelize.threads:
-                assert map_executor == 'spawn'
-                return ThreadPoolExecutor(max_workers=num_workers)
-            elif parallelize is Parallelize.ray:
-                return None
-            else:
-                raise NotImplementedError(f'Unsupported: you cannot stream data with {parallelize} parallelization.')
+            return dispatch_executor(
+                parallelize=parallelize,
+                max_workers=num_workers,
+            )
         return None
 
     @classmethod

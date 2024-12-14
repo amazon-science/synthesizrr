@@ -14,6 +14,7 @@ from synthergent.base.util import Parameters, MutableParameters, Registry, Fract
     Timeout, Timeout24Hr, TimeoutNever, all_are_false, accumulate, any_are_none, is_function, as_list, get_default, \
     random_sample, Log, format_exception_msg, start_daemon, stop_daemon, run_concurrent, NeverFailJsonEncoder
 from synthergent.base.util.aws import S3Util
+from synthergent.base.constants import _LIBRARY_NAME
 from pydantic import root_validator, Extra, conint, confloat
 from pydantic.typing import Literal
 
@@ -36,7 +37,7 @@ class Evaluator(MutableParameters, Registry, ABC):
     hyperparams: Optional[Dict] = None
     model: Optional[Algorithm] = None
     model_dir: Optional[FileMetadata] = None
-    cache_dir: Optional[Union[FileMetadata, Dict, str]] = FileMetadata.of('~/.cache/litmus/models/')
+    cache_dir: Optional[Union[FileMetadata, Dict, str]] = FileMetadata.of(f'~/.cache/{_LIBRARY_NAME}/models/')
     run_config: RunConfig = dict()
 
     validate_inputs: Optional[FractionalBool] = None
