@@ -8,7 +8,7 @@ from ray.runtime_env import RuntimeEnv as RayRuntimeEnv
 from synthergent.base.util import Parameters, set_param_from_alias, safe_validate_arguments, format_exception_msg, StringUtil, \
     Timer, get_default, is_list_like, is_empty_list_like, run_concurrent, \
     Timeout24Hr, Timeout1Hr, Timeout, as_list, accumulate, get_result, wait, AutoEnum, auto, ProgressBar, only_item, \
-    ignore_all_output, ignore_logging, ignore_warnings, ignore_stdout
+    ignore_all_output, ignore_logging, ignore_warnings, ignore_stdout, LoadBalancingStrategy
 from synthergent.base.util.aws import S3Util
 from synthergent.base.data import FileMetadata, ScalableDataFrame
 from synthergent.base.data.sdf import DaskScalableDataFrame
@@ -46,13 +46,6 @@ class ShardingStrategy(AutoEnum):
 class DataLoadingStrategy(AutoEnum):
     LOCAL = auto()
     DASK = auto()
-
-
-class LoadBalancingStrategy(AutoEnum):
-    ROUND_ROBIN = auto()
-    LEAST_USED = auto()
-    UNUSED = auto()
-    RANDOM = auto()
 
 
 ALGORITHM_EVALUATOR_VERBOSITY_IGNORE: Dict[int, List[Callable]] = {
