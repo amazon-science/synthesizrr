@@ -5,7 +5,7 @@ from pandas.core.frame import Series as PandasSeries, DataFrame as PandasDataFra
 import dask.dataframe as dd
 from dask.dataframe.core import Scalar as DaskScalar, Series as DaskSeries, DataFrame as DaskDataFrame
 from synthergent.base.util import multiple_are_not_none, all_are_none, is_function, wrap_fn_output, \
-    get_default, RayDaskPersistWaitCallback, get_current_fn_name, accumulate, safe_validate_arguments, Log, Executor
+    get_default, RayDaskPersistWaitCallback, set_param_from_alias, Alias, safe_validate_arguments, Log, Executor
 from synthergent.base.constants import DataLayout, Parallelize
 from synthergent.base.data.sdf.ScalableSeries import ScalableSeries
 from synthergent.base.data.sdf.ScalableDataFrame import ScalableDataFrame, ScalableDataFrameOrRaw, is_scalable, \
@@ -159,7 +159,8 @@ class DaskScalableDataFrame(ScalableDataFrame):
         Creates a new DaskScalableDataFrame with different partition boundaries.
         We augment the Dask implementation to allow repartitioning by `nrows`.
         """
-        nrows: int = get_default(nrows, kwargs.get('batch_size'), kwargs.get('num_rows'))
+        Alias.set_num_rows(kwargs, param='nrows')
+        nrows: int = get_default(nrows, kwargs.pop('nrows', None))
         if multiple_are_not_none(nrows, npartitions, partition_size):
             raise ValueError(f'Only one of the following can be non-None: `nrows`, `npartitions`, `partition_size`')
         if nrows is not None:

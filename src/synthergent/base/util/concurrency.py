@@ -618,7 +618,7 @@ _GLOBAL_PROCESS_POOL_EXECUTOR: ActorPoolExecutor = ActorPoolExecutor(
 def run_parallel(
         fn,
         *args,
-        executor: Optional[ActorPoolExecutor] = None,
+        executor: Optional[Union[ProcessPoolExecutor, ActorPoolExecutor]] = None,
         **kwargs,
 ):
     global _GLOBAL_PROCESS_POOL_EXECUTOR
@@ -818,16 +818,44 @@ def run_parallel_ray(
         num_gpus: int = 0,
         max_retries: int = 0,
         retry_exceptions: Union[List, bool] = True,
+        executor: Optional[RayPoolExecutor] = None,
         **kwargs,
 ):
     # print(f'Running {fn_str(fn)} using {Parallelize.ray} with num_cpus={num_cpus}, num_gpus={num_gpus}')
-    return _run_parallel_ray_executor.options(
-        scheduling_strategy=scheduling_strategy,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        max_retries=max_retries,
-        retry_exceptions=retry_exceptions,
-    ).remote(fn, *args, **kwargs)
+    if executor is not None:
+        assert isinstance(executor, RayPoolExecutor)
+        return executor.submit(
+            fn,
+            *args,
+            scheduling_strategy=scheduling_strategy,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            max_retries=max_retries,
+            retry_exceptions=retry_exceptions,
+            **kwargs,
+        )
+    else:
+        return _run_parallel_ray_executor.options(
+            scheduling_strategy=scheduling_strategy,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            max_retries=max_retries,
+            retry_exceptions=retry_exceptions,
+        ).remote(fn, *args, **kwargs)
+
+
+class ExecutorConfig(Parameters):
+    class Config(Parameters.Config):
+        extra = Extra.ignore
+
+    parallelize: Parallelize
+    max_workers: Optional[int] = None
+    max_calls_per_second: float = float('inf')
+
+    @root_validator(pre=True)
+    def _set_params(cls, params: Dict) -> Dict:
+        set_param_from_alias(params, param='max_workers', alias=['num_workers'], default=None)
+        return params
 
 
 def dispatch(
@@ -858,24 +886,33 @@ def dispatch(
 
 def dispatch_executor(
         *,
-        parallelize: Parallelize,
+        config: Optional[Union[ExecutorConfig, Dict]] = None,
         **kwargs
 ) -> Optional[Executor]:
-    parallelize: Parallelize = Parallelize.from_str(parallelize)
-    set_param_from_alias(kwargs, param='max_workers', alias=['num_workers'], default=None)
-    max_workers: Optional[int] = kwargs.pop('max_workers', None)
-    max_calls_per_second: Optional[int] = kwargs.pop('max_calls_per_second', inf)
-    if max_workers is None:
+    if config is None:
+        config: Dict = dict()
+    else:
+        assert isinstance(config, ExecutorConfig)
+        config: Dict = config.dict(exclude=True)
+    config: ExecutorConfig = ExecutorConfig(**{**config, **kwargs})
+    if config.max_workers is None:
         ## Uses the default executor for threads/processes/ray.
         return None
-    if parallelize is Parallelize.sync:
+    if config.parallelize is Parallelize.sync:
         return None
-    elif parallelize is Parallelize.threads:
-        return RestrictedConcurrencyThreadPoolExecutor(max_workers=max_workers, max_calls_per_second=max_calls_per_second)
-    elif parallelize is Parallelize.processes:
-        return ActorPoolExecutor(max_workers=max_workers)
-    elif parallelize is Parallelize.ray:
-        return RayPoolExecutor(max_workers=max_workers)
+    elif config.parallelize is Parallelize.threads:
+        return RestrictedConcurrencyThreadPoolExecutor(
+            max_workers=config.max_workers,
+            max_calls_per_second=config.max_calls_per_second,
+        )
+    elif config.parallelize is Parallelize.processes:
+        return ActorPoolExecutor(
+            max_workers=config.max_workers,
+        )
+    elif config.parallelize is Parallelize.ray:
+        return RayPoolExecutor(
+            max_workers=config.max_workers,
+        )
     else:
         raise NotImplementedError(f'Unsupported: you cannot create an executor with {parallelize} parallelization.')
 

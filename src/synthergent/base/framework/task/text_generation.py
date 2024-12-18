@@ -512,8 +512,7 @@ GenerationOutputScoresFormat = Literal['probabilities', 'log-probabilities', 'lo
 
 class TextGenerationParams(Parameters, ABC):  ## Becomes an anonymous class later
     class Config(Parameters.Config):
-        ## Allow extra keyword parameters to be used when initializing the reader.
-        ## These will be forwarded to the respective reader method like .read_csv, .read_json, etc.
+        ## Allow extra keyword parameters to be used when initializing the class.
         extra = Extra.allow
 
     strategy: ClassVar[str]

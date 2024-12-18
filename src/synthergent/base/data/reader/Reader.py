@@ -38,7 +38,7 @@ class Reader(Parameters, Registry, ABC):
         """
 
         class Config(Parameters.Config):
-            ## Allow extra keyword parameters to be used when initializing the reader.
+            ## Allow extra keyword parameters to be used when initializing the class.
             ## These will be forwarded to the respective reader method like .read_csv, .read_json, etc.
             extra = Extra.allow
 

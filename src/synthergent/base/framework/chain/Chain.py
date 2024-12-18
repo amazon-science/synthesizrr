@@ -254,9 +254,11 @@ class Chain(MutableParameters):
             self,
             *args,
             exn_name: Optional[constr(min_length=1)] = None,
+            background: bool = False,
             tracker: Optional[Union[Tracker, Dict, str]] = None,
             notifier: Optional[Union[Notifier, Dict, str]] = None,
-            background: bool = False,
+            store_step_inputs: bool = False,
+            store_step_outputs: bool = False,
             after: Optional[ChainExecution] = None,
             after_wait: conint(ge=0) = 15,
             step_wait: confloat(ge=0.0) = 0.0,
@@ -270,12 +272,16 @@ class Chain(MutableParameters):
         background: (Default: False) whether to run as a background thread or not.
         tracker: (Optional) whether to track logs to file, Aim, etc.
         notifier: (Optional) whether to notify via Discord, etc.
+        store_step_inputs: whether to store inputs for each step. Generally only useful for debugging, can lead to large 
+         objects being stored.
+        store_step_outputs: whether to store outputs for each step. Generally only useful for debugging, can lead to large 
+         objects being stored.
         after: (Optional) current execution only starts after another one ends.
         after_wait: (Default: 15) number of seconds to pause while waiting for a previous execution to end.
         step_wait: (Default: 0) numer of seconds to wait between steps.
         step_wait_jitter: (Default: 0.8) fluctuation in step_wait time (useful when running concurrent executions).
-        executor: (Optional) common executor usable within each Step. Can be shared between different chain executions to
-         restrict resource usage.
+        executor: (Optional) common executor passed to each Step.
+            Can be shared between different chain executions to restrict resource usage.
         verbosity: Verbosity level, forwarded to each Step.
         """
         if len(args) > 0:
@@ -306,16 +312,18 @@ class Chain(MutableParameters):
             fut: Future = dispatch(
                 partial(
                     self._execute_chain,
-                    executor=executor,
                     exn_name=exn_name,
+                    chain_exn=chain_exn,
+                    store_step_inputs=store_step_inputs,
+                    store_step_outputs=store_step_outputs,
                     verbosity=verbosity,
                     tracker=tracker.dict(),
                     notifier=notifier,
-                    chain_exn=chain_exn,
                     after=after,
                     after_wait=after_wait,
                     step_wait=step_wait,
                     step_wait_jitter=step_wait_jitter,
+                    step_run_executor=executor,
                     **kwargs,
                 ),
                 parallelize=main_interpreter_parallelize,
@@ -331,16 +339,18 @@ class Chain(MutableParameters):
             self,
             *,
             exn_name: Optional[constr(min_length=1)],
+            chain_exn: ChainExecution,
+            store_step_inputs: bool,
+            store_step_outputs: bool,
             verbosity: conint(ge=0),
             tracker: Dict,
             notifier: Dict,
-            chain_exn: ChainExecution,
             after: Optional[ChainExecution],
             after_wait: conint(ge=0),
             step_wait: confloat(ge=0.0),
             step_wait_jitter: confloat(gt=0.0),
             step_parallelize: Optional[Parallelize] = Parallelize.sync,
-            executor: Optional[Any],
+            step_run_executor: Optional[Executor],
             **kwargs,
     ) -> NoReturn:
         if after is not None:
@@ -385,12 +395,13 @@ class Chain(MutableParameters):
                     chain_exn_pbar.set_description(
                         desc=f'{exn_name}: Running "{step.class_name}" '
                     )
-                    step_exn: StepExecution = self._execute_step(
+                    step_exn, step_exn_error = self._execute_step(
                         exn_name=exn_name,
-                        chain_exn=chain_exn,
                         step=step.clone(),
                         step_i=step_i,
-                        executor=executor,
+                        store_step_inputs=store_step_inputs,
+                        store_step_outputs=store_step_outputs,
+                        step_run_executor=step_run_executor,
                         all_kwargs=all_kwargs,
                         tracker=tracker,
                         verbosity=verbosity,
@@ -398,10 +409,15 @@ class Chain(MutableParameters):
                         step_wait=step_wait,
                         step_wait_jitter=step_wait_jitter,
                     )
+                    chain_exn.steps.append(step_exn)
+                    if step_exn_error is not None:
+                        raise step_exn_error
                     all_kwargs: Dict = {
                         **all_kwargs,
                         **step_exn.outputs,
                     }
+                    if not store_step_outputs:
+                        step_exn.outputs = None
                     chain_exn_pbar.update(1)
             else:
                 ## Run all steps in the chain concurrently:
@@ -422,10 +438,11 @@ class Chain(MutableParameters):
                         partial(
                             self._execute_step,
                             exn_name=exn_name,
-                            chain_exn=chain_exn,
                             step=step.clone(),
                             step_i=step_i,
-                            executor=executor,
+                            store_step_inputs=store_step_inputs,
+                            store_step_outputs=store_step_outputs,
+                            step_run_executor=step_run_executor,
                             all_kwargs=all_kwargs,
                             tracker=tracker,
                             verbosity=verbosity,
@@ -436,23 +453,48 @@ class Chain(MutableParameters):
                         parallelize=step_parallelize,
                         executor=chain_steps_executor,
                     ))
-                step_exns: List[StepExecution] = accumulate(step_exn_futs, progress_bar=chain_exn_pbar)
                 if self.combine == 'list':
-                    all_kwargs[self.output_key]: List[Dict] = [step_exn.outputs for step_exn in step_exns]
+                    all_kwargs[self.output_key]: List[Dict] = []
                 elif self.combine == 'dict':
-                    all_kwargs[self.output_key]: Dict[int, Dict] = {
-                        step_i: step_exn.outputs
-                        for step_i, step_exn in enumerate(step_exns)
-                    }
+                    all_kwargs[self.output_key]: Dict[int, Dict] = {}
                 elif self.combine == 'merge':
                     all_kwargs[self.output_key]: Dict = {}
-                    for step_exn in step_exns:
-                        all_kwargs[self.output_key] = {
-                            **all_kwargs[self.output_key],
-                            **step_exn.outputs,
-                        }
                 else:
                     raise NotImplementedError(f'Invalid value for {self.class_name}.combine: {self.combine}')
+
+                error_msg: str = ''
+                for step_i, (step_exn, step_exn_error) in enumerate(accumulate(
+                        step_exn_futs,
+                        progress_bar=chain_exn_pbar,
+                )):
+                    assert isinstance(step_exn, StepExecution)
+                    if step_exn_error is not None:
+                        error_msg += f'\n{"-" * 40}' \
+                                     f'\nError in Step ({StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}) ' \
+                                     f'"{step_exn.step_template.class_name}":' \
+                                     f'\n{format_exception_msg(step_exn_error)}'
+                    elif step_exn.outputs is None:
+                        raise RuntimeError(
+                            f'Error in Step ({StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}) '
+                            f'"{step_exn.step_template.class_name}" with status {step_exn.status}: '
+                            f'expected outputs but found None.'
+                        )
+                    else:
+                        if self.combine == 'list':
+                            all_kwargs[self.output_key].append(step_exn.outputs)
+                        elif self.combine == 'dict':
+                            all_kwargs[self.output_key][step_i] = step_exn.outputs
+                        elif self.combine == 'merge':
+                            all_kwargs[self.output_key] = {
+                                **all_kwargs[self.output_key],
+                                **step_exn.outputs,
+                            }
+                    if not store_step_outputs:
+                        step_exn.outputs = None
+                    chain_exn.steps.append(step_exn)
+                error_msg: str = error_msg.strip()
+                if error_msg != '':
+                    raise RuntimeError(f'Running {self.class_name} failed with the following errors:\n{error_msg}')
             if chain_exn.num_executed_steps == self.num_steps:
                 ## All steps were executed, successfully.
                 ## If we stopped, it means we stopped during the last step, which executed successfully...in this case
@@ -467,6 +509,7 @@ class Chain(MutableParameters):
             timer.stop()
             chain_exn.completed_at = timer.end_datetime
             stop_executor(chain_steps_executor)
+            gc.collect()
             if chain_exn.success():
                 info_logger(
                     f'\n{exn_name}: Execution succeeded. '
@@ -500,17 +543,18 @@ class Chain(MutableParameters):
             self,
             *,
             exn_name: Optional[constr(min_length=1)],
-            chain_exn: ChainExecution,
             step: Step,
             step_i: int,
+            store_step_inputs: bool,
+            store_step_outputs: bool,
             all_kwargs: Dict,
-            executor: Optional[Any],
+            step_run_executor: Optional[Any],
             verbosity: conint(ge=0),
             tracker: Tracker,
             debug_logger: Callable,
             step_wait: float,
             step_wait_jitter: float,
-    ) -> StepExecution:
+    ) -> Tuple[StepExecution, Optional[Exception]]:
         debug_logger(
             f'Running {exn_name}'
             f'Step {StringUtil.pad_zeros(step_i + 1, self.num_steps)}/{self.num_steps}: '
@@ -525,13 +569,15 @@ class Chain(MutableParameters):
             step_i=step_i,
             num_steps=self.num_steps,
             all_kwargs={
-                'executor': executor,
+                'executor': step_run_executor,
+                'step_i': step_i,
+                'num_steps': self.num_steps,
                 **all_kwargs,
             },
         )
         step_exn: StepExecution = StepExecution(
             step_template=step,
-            inputs=remove_keys(step_inputs, ['executor']),
+            inputs=remove_keys(step_inputs, ['executor']) if store_step_inputs else None,
             started_at=step_timer.start_datetime,
             status=Status.RUNNING,
         )
@@ -563,11 +609,10 @@ class Chain(MutableParameters):
                 step_wait - step_wait * step_wait_jitter,
                 step_wait + step_wait * step_wait_jitter,
             ))
-            chain_exn.steps.append(step_exn)
-            return step_exn
+            return step_exn, None  ## Returned after "finally" clause runs
         except Exception as e:
             step_exn.status = Status.FAILED
-            raise e
+            return step_exn, e  ## Returned after "finally" clause runs
         finally:
             step_timer.stop()
             step_exn.completed_at = step_timer.end_datetime
@@ -664,7 +709,7 @@ class Chain(MutableParameters):
 
 class StepExecution(MutableParameters):
     step_template: Step
-    inputs: Dict
+    inputs: Optional[Dict] = None
     outputs: Optional[Dict] = None
     started_at: datetime
     completed_at: Optional[datetime] = None
@@ -751,7 +796,7 @@ class ChainExecution(MutableParameters):
         """Stops the Chain's execution *after* the currently-running step succeeds."""
         _executor = self._executor
         stop_executor(_executor, force=force)
-        self._executor = None
+        self._executor: Optional[Executor] = None
         if self.status not in {Status.SUCCEEDED, Status.FAILED}:
             self.status = Status.STOPPED  ## This will cause the chain execution loop to exit after the current step
 
@@ -786,6 +831,6 @@ class ParallelMap(Chain):
     output_key: str = 'parallel_map_results'
     parallelize: Parallelize = Parallelize.threads
 
-    def run(self, **kwargs) -> Dict:
+    def run(self, **kwargs) -> Union[ChainExecution, Future]:
         kwargs['step_parallelize'] = self.parallelize
         return get_result(super(ParallelMap, self).run(**kwargs))
