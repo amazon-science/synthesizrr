@@ -1970,8 +1970,11 @@ def is_valid_idx(
 def iter_batches(
         struct: Union[List, Tuple, Set, Dict, np.ndarray, pd.Series, pd.DataFrame, int],
         batch_size: int,
+        **kwargs
 ) -> Generator[List[Any], None, None]:
     assert isinstance(batch_size, int) and batch_size > 0
+    set_param_from_alias(kwargs, param='progress_bar', alias=['progress', 'pbar'])
+    progress_bar: Union[ProgressBar, Dict, bool] = kwargs.pop('progress_bar', False)
     if is_int_in_floats_clothing(struct):
         struct: List[int] = list(range(int(struct)))
     if is_set_like(struct):
@@ -1980,24 +1983,44 @@ def iter_batches(
         struct_type: Type = dict
     else:
         struct_type: Optional[Type] = None
-    if struct_type is not None:
-        buf: List[Any] = []
-        if isinstance(struct, dict):
-            struct: ItemsView = struct.items()
-        for x in struct:
-            buf.append(x)
-            if len(buf) == batch_size:
-                yield struct_type(buf)
-                buf: List[Any] = []
-        if len(buf) > 0:
-            yield struct_type(buf)
-    else:
-        struct_len: int = len(struct)
-        for i in range(0, struct_len, batch_size):
-            if isinstance(struct, (pd.Series, pd.DataFrame)):
-                yield struct.iloc[i: min(i + batch_size, struct_len)]
-            else:
-                yield struct[i: min(i + batch_size, struct_len)]
+
+    struct_len: int = len(struct)
+    pbar: ProgressBar = ProgressBar.of(
+        progress_bar,
+        total=struct_len,
+        initial=0,
+        desc='Iterating',
+        prefer_kwargs=False,
+        unit='item',
+    )
+    try:
+        if struct_type is not None:
+            buf: List[Any] = []
+            if isinstance(struct, dict):
+                struct: ItemsView = struct.items()
+            for x in struct:
+                buf.append(x)
+                if len(buf) == batch_size:
+                    out = struct_type(buf)
+                    yield out
+                    pbar.update(len(out))
+                    buf: List[Any] = []
+            if len(buf) > 0:
+                out = struct_type(buf)
+                yield out
+                pbar.update(len(out))
+        else:
+            for i in range(0, struct_len, batch_size):
+                if isinstance(struct, (pd.Series, pd.DataFrame)):
+                    out = struct.iloc[i: min(i + batch_size, struct_len)]
+                else:
+                    out = struct[i: min(i + batch_size, struct_len)]
+                yield out
+                pbar.update(len(out))
+        pbar.success()
+    except Exception as e:
+        pbar.failed()
+        raise e
 
 
 def mean(vals):
