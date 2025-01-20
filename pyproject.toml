@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "synthesizrr"
+dynamic = ["version"]
+authors = [
+    { name = "Abhishek Divekar", email = "adivekar@utexas.edu" }
+]
+description = "Synthesizing realistic and diverse text-datasets from augmented LLMs."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license-files = ["LICENSE"]
+dependencies = [
+    "fmcore[all]",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+fix = true
+force-exclude = true
+extend-exclude = [
+    "__init__.py",
+]
+
+[tool.ruff.lint]
+fixable = [
+    "I",    # Add all rules under isort linter: https://docs.astral.sh/ruff/rules/#isort-i
+    "W",    # Add all rules under whitespace: https://docs.astral.sh/ruff/rules/#warning-w
+    "E401", # multiple-imports-on-one-line: https://docs.astral.sh/ruff/rules/multiple-imports-on-one-line/
+    "E713", # not-in-test: https://docs.astral.sh/ruff/rules/not-in-test/
+    "E721", # type-comparison: https://docs.astral.sh/ruff/rules/type-comparison/
+    "E722", # bare-except: https://docs.astral.sh/ruff/rules/bare-except/
+    "F401", # unused-import: https://docs.astral.sh/ruff/rules/unused-import/
+    "F541", # f-string-missing-placeholders: https://docs.astral.sh/ruff/rules/f-string-missing-placeholders/
+    "F811", # redefined-while-unused: https://docs.astral.sh/ruff/rules/redefined-while-unused/
+    "F841", # unused-variable: https://docs.astral.sh/ruff/rules/unused-variable/
+]
+ignore = [
+    ## Ignored because it makes the code too verbose:
+    "E731", # lambda-assignment: https://docs.astral.sh/ruff/rules/lambda-assignment/
+    "E741", # ambiguous-variable-name: https://docs.astral.sh/ruff/rules/ambiguous-variable-name/
+    
+    ## Ignored because of bad interaction with `from typing import *`
+    "F405", # undefined-local-with-import-star-usage: https://docs.astral.sh/ruff/rules/undefined-local-with-import-star-usage/
+    "F403", # undefined-local-with-import-star: https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/
+]
