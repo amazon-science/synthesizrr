@@ -1,9 +1,20 @@
-from typing import *
+import math
+import time
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
-from fmcore.framework import *
-from fmcore.framework.dl.torch import *
-from fmcore.util import *
+from bears import FileMetadata
+from bears.util import LoadBalancingStrategy, get_default, not_impl, safe_validate_arguments
+from fmcore.framework import Chain, Notifier, Tracker
+from pydantic import confloat, conint
 
 from synthesizrr.common import (
     DEFAULT_TEMPERATURE,
@@ -82,7 +93,7 @@ def run_chain(
     notifier: Optional[Notifier],
     tracker: Optional[Tracker],
     background: bool,
-    step_wait: confloat(ge=0.0) = 30,  ## To avoid AWS creds error when running many in parallel
+    step_wait: confloat(ge=0.0) = 30,  ## To avoid AWS credentials error when running many in parallel
     pause: confloat(ge=0.0) = 3,
     dataset_name: DatasetName,
     model_name: Optional[ModelName] = None,
