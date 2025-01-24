@@ -1,142 +1,80 @@
 import gc
-from abc import ABC
-import gc
 import json
-from fmcore.constants import (
-    FileFormat,
-    DataLayout,
-    MLType,
-    DataSplit,
-    Task,
-    Storage,
-    Parallelize,
-)
-from fmcore.util import (
-    Registry,
-    MutableParameters,
-    Parameters,
-    set_param_from_alias,
-    is_list_like,
-    as_list,
-    random_sample,
-    safe_validate_arguments,
-    get_default,
+from abc import ABC
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Set, Tuple, Union
+
+import numpy as np
+import pandas as pd
+from bears.util import (
     StringUtil,
-    MLTypeSchema,
-    AutoEnum,
-    auto,
-    alias,
-    Timer,
-    not_impl,
-    check_isinstance,
-    keep_keys,
-    keep_values,
-    FileSystemUtil,
-    type_str,
-    parameterized_flatten,
     all_are_false,
-    remove_keys,
-    sample_idxs_match_distribution,
-    is_function,
-    punct_normalize,
-    all_are_none,
-    remove_nulls,
+    get_default,
     get_fn_spec,
+    not_impl,
+    remove_keys,
+    safe_validate_arguments,
+    sample_idxs_match_distribution,
 )
-from fmcore.util.concurrency import (
-    run_asyncio,
-    run_concurrent,
-    run_parallel,
-    run_parallel_ray,
-    wait,
-    wait_if_future,
+from bears.util.concurrency import (
+    ThreadPoolExecutor,
     accumulate,
     get_result,
-    ThreadPoolExecutor,
-    stop_executor,
-    dispatch,
-    dispatch_executor,
     retry,
+    run_concurrent,
+    stop_executor,
+)
+from fmcore.constants import (
+    DataLayout,
+    DataSplit,
+    FileFormat,
+    MLType,
+    Parallelize,
 )
 from fmcore.data import (
     FileMetadata,
-    ScalableDataFrame,
-    ScalableSeries,
     Reader,
-    ScalableDataFrameOrRaw,
-    to_sdf,
     Writer,
 )
-from fmcore.framework.task_data import Dataset, Datasets, save_dataset, load_dataset
-from fmcore.framework.predictions import Predictions, save_predictions, load_predictions
-from fmcore.framework.task import Prompts, NextTokens
-from fmcore.framework.metric import Metric, Metrics
-from fmcore.util.aws import S3Util
-from fmcore.framework import Algorithm
-from fmcore.framework.task.classification import ClassificationData
-from fmcore.framework.task.embedding import EmbeddingData, Embeddings
-from fmcore.framework.task.retrieval import Queries, RankedResults, RetrievalCorpus
-from fmcore.framework.task.text_generation import (
-    TextInputs,
-    NextTokens,
-    TextGenerations,
-    FewShotTextGenerator,
-    TextGenerationsPredictionsBase,
+from fmcore.framework._metric import Metric, Metrics
+from fmcore.framework._predictions import load_predictions, save_predictions
+from fmcore.framework._task.classification import ClassificationData
+from fmcore.framework._task.text_generation import (
     GENERATED_TEXTS_COL,
+    TextGenerationsPredictionsBase,
+    TextInputs,
 )
-from fmcore.metric.text_generation_metrics import _clf_dataset_to_text_gens
-from fmcore.framework.evaluator import Evaluator
-from fmcore.framework.chain.Chain import Step, Chain
-from functools import partial
-from pydantic import root_validator, Extra, conint, confloat, constr, ValidationError
-from pydantic.typing import Literal
-from fmcore.framework.trainer.RayTuneTrainer import (
-    _RAY_TRIAL_ID,
-    _RAY_EXPERIMENT_ID,
-    _RAY_KFOLD_CURRENT_FOLD_NAME,
-    _RAY_EPOCH_NUM,
-    _RAY_STEPS_COMPLETED,
-    _RAY_EST_TIME_REMAINING,
+from fmcore.framework._dataset import Dataset
+from fmcore.framework._trainer.RayTuneTrainer import (
     _RAY_TRAINING_ITERATION,
-    _RAY_HYPERPARAMS_STR,
-    _RAY_HYPERPARAMS,
-    _RAY_METRIC_IS_DATAFRAME_PREFIX,
+    _RAY_TRIAL_ID,
 )
-from fmcore.metric.text_generation_metrics import TextGenerationStudent
 from fmcore.metric.classification_metrics import DatasetCartography
-from synthesizrr.data import SynthesizRRDataset
+from fmcore.metric.text_generation_metrics import TextGenerationStudent, _clf_dataset_to_text_gens
+from pydantic import ValidationError, confloat, conint, constr
+
 from synthesizrr.common import (
-    CachedResultsStep,
-    IDX_COL,
-    LABEL_TEXT_COL,
-    LABEL_VERBALIZATION_COL,
-    EXAMPLE_TEXT_COL,
-    QUERY_TEXT_COL,
-    RETRIEVED_TOP_K_COL,
-    RETRIEVED_CONTEXT_COL,
-    DISTANCE_COL,
-    DISTANCE_METRIC_COL,
-    EFS_HUGGINGFACE_CACHE_DIR,
-    DEFAULT_SEED_SET_DATA_SPLIT,
     DEFAULT_SEED,
+    DEFAULT_SEED_SET_DATA_SPLIT,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_P,
+    IDX_COL,
     LABEL_OVERALL,
+    RETRIEVED_CONTEXT_COL,
     TEXT_GEN_REFERENCES_COL,
-    expand_num_samples_per_label,
-    DatasetName,
+    CachedResultsStep,
     Corpus,
+    DatasetFilterParams,
+    DatasetName,
+    Experiment,
+    MetricName,
     ModelName,
     Retriever,
-    MetricName,
     Student,
-    count_num_tokens,
-    shorten,
-    Experiment,
-    get_templates_and_hashes,
-    DatasetFilterParams,
     calc_label_dist,
-    DEFAULT_TOP_P,
-    DEFAULT_TEMPERATURE,
+    expand_num_samples_per_label,
+    get_templates_and_hashes,
 )
+from synthesizrr.data import SynthesizRRDataset
 
 
 class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
@@ -159,11 +97,9 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                 return True
             try:
                 _, detailed_final_model_metrics = cart_metric.value
-                DatasetCartography.calc_data_map(
-                    detailed_final_model_metrics, index_col=IDX_COL
-                )
+                DatasetCartography.calc_data_map(detailed_final_model_metrics, index_col=IDX_COL)
                 return False
-            except Exception as e:  ## Failed to calculate data map, rerun
+            except Exception:  ## Failed to calculate data map, rerun
                 return True
         return False
 
@@ -186,9 +122,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         index_col: str = text_gens.data_schema.index_col
         num_ex: int = 0
         for d in text_gens.data.to_list_of_dict():
-            for text_gen in text_gens_parser(
-                d[GENERATED_TEXTS_COL], model_name=model_name
-            ):
+            for text_gen in text_gens_parser(d[GENERATED_TEXTS_COL], model_name=model_name):
                 if isinstance(text_gen, str) and len(text_gen.strip()) > 0:
                     text_gens_data.append(
                         {
@@ -198,16 +132,12 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         }
                     )
                     num_ex += 1
-        text_gens_expanded: TextGenerationsPredictionsBase = text_gens.update_params(
-            data=text_gens_data
-        )
+        text_gens_expanded: TextGenerationsPredictionsBase = text_gens.update_params(data=text_gens_data)
 
         ## Add references column:
         text_gens_expanded_df: pd.DataFrame = text_gens_expanded.data.pandas()
         ref_dataset: ClassificationData = (
-            SynthesizRRDataset.get(dataset_name.canonical())
-            .datasets[references_data_split]
-            .read()
+            SynthesizRRDataset.get(dataset_name.canonical()).datasets[references_data_split].read()
         )
         ref_dataset_df: pd.DataFrame = ref_dataset.data.pandas()
         ref_dataset_text_col: str = dataset_name.text_col()
@@ -226,26 +156,20 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                 )
             )
             labelwise_text_gens_expanded_refs: List[str] = []
-            while len(labelwise_text_gens_expanded_refs) < len(
-                labelwise_text_gens_expanded_df
-            ):
+            while len(labelwise_text_gens_expanded_refs) < len(labelwise_text_gens_expanded_df):
                 labelwise_text_gens_expanded_refs.extend(labelwise_ref_text)
             labelwise_text_gens_expanded_df[references_col]: pd.Series = pd.Series(
-                labelwise_text_gens_expanded_refs[
-                    : len(labelwise_text_gens_expanded_df)
-                ]
+                labelwise_text_gens_expanded_refs[: len(labelwise_text_gens_expanded_df)]
             )
             text_gens_expanded_with_refs_df.append(labelwise_text_gens_expanded_df)
         text_gens_expanded_with_refs_df: pd.DataFrame = pd.concat(
             text_gens_expanded_with_refs_df,
             axis=0,
         ).reset_index(drop=True)
-        text_gens_expanded_with_refs: TextGenerationsPredictionsBase = (
-            text_gens_expanded.update_params(data=text_gens_expanded_with_refs_df)
+        text_gens_expanded_with_refs: TextGenerationsPredictionsBase = text_gens_expanded.update_params(
+            data=text_gens_expanded_with_refs_df
         )
-        text_gens_expanded_with_refs.data_schema.features_schema[references_col] = (
-            MLType.TEXT
-        )
+        text_gens_expanded_with_refs.data_schema.features_schema[references_col] = MLType.TEXT
         assert isinstance(text_gens_expanded_with_refs, TextGenerationsPredictionsBase)
 
         self.info(
@@ -278,59 +202,43 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         verbosity: int,
     ) -> TextGenerationsPredictionsBase:
         if filter_params.filter_type == "none":
-            self.info(f"No filter applied to text generations.")
+            self.info("No filter applied to text generations.")
             return text_gens
         filter_str, filter_hash = filter_params.save_key_and_hash(
             dataset_cartography_student=dataset_cartography_student,
             dataset_cartography_text_col=dataset_cartography_text_col,
         )
-        self.info(
-            f"Filtering {len(text_gens)} text generations according to params: {filter_str}"
-        )
-        filtered_text_gens_file: FileMetadata = (
-            filter_text_gens_results_dir.file_in_dir(
-                f"text_gens-f={filter_hash}.parquet",
-                return_metadata=True,
-            ).update_params(file_format=FileFormat.PARQUET)
-        )
+        self.info(f"Filtering {len(text_gens)} text generations according to params: {filter_str}")
+        filtered_text_gens_file: FileMetadata = filter_text_gens_results_dir.file_in_dir(
+            f"text_gens-f={filter_hash}.parquet",
+            return_metadata=True,
+        ).update_params(file_format=FileFormat.PARQUET)
         if not filtered_text_gens_file.exists():
             if filter_params.filter_type == "cartography":
-                cartography_metric = (
-                    MetricName.StudentDatasetCartography.get_student_metric(
-                        text_gens=text_gens,
-                        dataset_name=dataset_name,
-                        student=dataset_cartography_student,
-                        train_text_col=dataset_cartography_text_col,
-                        verbosity=1 if verbosity >= 3 else 0,
-                        student_num_models=1,
-                    )
+                cartography_metric = MetricName.StudentDatasetCartography.get_student_metric(
+                    text_gens=text_gens,
+                    dataset_name=dataset_name,
+                    student=dataset_cartography_student,
+                    train_text_col=dataset_cartography_text_col,
+                    verbosity=1 if verbosity >= 3 else 0,
+                    student_num_models=1,
                 )
-                self.info(
-                    f">> Running dataset cartography on {len(text_gens)} generations."
-                )
-                cartography_metric: Metric = cartography_metric.evaluate(
-                    text_gens, inplace=False
-                )
-                cartography_metric_file: FileMetadata = (
-                    filter_text_gens_results_dir.file_in_dir(
-                        f"cartography_metric-f={filter_hash}.pkl",
-                        return_metadata=True,
-                    ).update_params(file_format=FileFormat.PICKLE)
-                )
+                self.info(f">> Running dataset cartography on {len(text_gens)} generations.")
+                cartography_metric: Metric = cartography_metric.evaluate(text_gens, inplace=False)
+                cartography_metric_file: FileMetadata = filter_text_gens_results_dir.file_in_dir(
+                    f"cartography_metric-f={filter_hash}.pkl",
+                    return_metadata=True,
+                ).update_params(file_format=FileFormat.PICKLE)
                 Writer.of(FileFormat.PICKLE).write(
                     cartography_metric_file,
                     data=cartography_metric,
                     overwrite=True,
                 )
-                self.info(
-                    f'>> Wrote dataset cartography metric to: "{cartography_metric_file.path}"'
-                )
+                self.info(f'>> Wrote dataset cartography metric to: "{cartography_metric_file.path}"')
                 _, detailed_final_model_metrics = cartography_metric.value
                 trial_cart_metrics: List[Dict] = []
                 trial_id: str = ""
-                for trial_id, trial_df in detailed_final_model_metrics.groupby(
-                    _RAY_TRIAL_ID
-                ):
+                for trial_id, trial_df in detailed_final_model_metrics.groupby(_RAY_TRIAL_ID):
                     if trial_df[_RAY_TRAINING_ITERATION].nunique() != 6:
                         continue
                     trial_df: pd.DataFrame = trial_df.sort_values(
@@ -338,9 +246,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                     ).reset_index(drop=True)
                     trial_cart_df: List[pd.DataFrame] = []
                     for training_iteration, iter_data_map_df in (
-                        trial_df.set_index(_RAY_TRAINING_ITERATION)[
-                            "Train/DatasetCartography"
-                        ]
+                        trial_df.set_index(_RAY_TRAINING_ITERATION)["Train/DatasetCartography"]
                         .to_dict()
                         .items()
                     ):
@@ -362,9 +268,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                                 "variability": float(
                                     idx_df["gold_label_prob"].std(ddof=0)
                                 ),  ## Biased std for some reason?
-                                "correctness": float(
-                                    idx_df["predicted_label_matches_gold"].mean()
-                                ),
+                                "correctness": float(idx_df["predicted_label_matches_gold"].mean()),
                             }
                         )
                     break  ## Only take first trial
@@ -375,9 +279,9 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         f"but found {len(trial_cart_metrics)}"
                     )
                 index_col: str = text_gens.data_schema.index_col
-                trial_cart_metrics["correctness_bucket"] = trial_cart_metrics[
-                    "correctness"
-                ].apply(lambda x: round(x, 1))
+                trial_cart_metrics["correctness_bucket"] = trial_cart_metrics["correctness"].apply(
+                    lambda x: round(x, 1)
+                )
                 trial_cart_metrics[label_col] = trial_cart_metrics[IDX_COL].map(
                     text_gens.data.pandas().set_index(index_col)[label_col].to_dict()
                 )
@@ -401,9 +305,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         )
                         return f"""{quant_val} <= {col}"""
                     elif crit == "bottom":
-                        quant_val: float = cart_df[
-                            col
-                        ].quantile(
+                        quant_val: float = cart_df[col].quantile(
                             frac  ## 0.8, so we filter by those below 80th quantile value, i.e bottom-80%
                         )
                         return f"""{col} <= {quant_val}"""
@@ -415,9 +317,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                     ## Filter by confidence:
                     if filter_params.cartography_confidence_range is not None:
                         df_filters.append(
-                            get_range_filter(
-                                filter_params.cartography_confidence_range, "confidence"
-                            )
+                            get_range_filter(filter_params.cartography_confidence_range, "confidence")
                         )
                     elif filter_params.cartography_confidence_frac is not None:
                         df_filters.append(
@@ -461,14 +361,10 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         )
                     ## Apply filters:
                     assert len(df_filters) > 0
-                    return cart_df.query(" and ".join(df_filters)).reset_index(
-                        drop=True
-                    )
+                    return cart_df.query(" and ".join(df_filters)).reset_index(drop=True)
 
                 if filter_params.cartography_apply == "overall":
-                    trial_cart_metrics_filtered: pd.DataFrame = filter_cart_df(
-                        trial_cart_metrics
-                    )
+                    trial_cart_metrics_filtered: pd.DataFrame = filter_cart_df(trial_cart_metrics)
                 elif filter_params.cartography_apply == "label":
                     trial_cart_metrics_filtered: pd.DataFrame = pd.concat(
                         [
@@ -483,34 +379,23 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         "filter_params.cartography_apply",
                         filter_params.cartography_apply,
                     )
-                trial_cartography_file: FileMetadata = (
-                    filter_text_gens_results_dir.file_in_dir(
-                        f"dataset_cartography"
-                        f"-trial_id={trial_id}"
-                        f"-f={filter_hash}"
-                        f".parquet",
-                        return_metadata=True,
-                    ).update_params(file_format=FileFormat.PARQUET)
-                )
+                trial_cartography_file: FileMetadata = filter_text_gens_results_dir.file_in_dir(
+                    f"dataset_cartography-trial_id={trial_id}-f={filter_hash}.parquet",
+                    return_metadata=True,
+                ).update_params(file_format=FileFormat.PARQUET)
                 Writer.of(FileFormat.PARQUET).write(
                     trial_cartography_file,
                     data=trial_cart_metrics_filtered,
                     overwrite=True,
                 )
-                self.info(
-                    f'>> Wrote trial-run cartography to: "{trial_cartography_file.path}"'
-                )
+                self.info(f'>> Wrote trial-run cartography to: "{trial_cartography_file.path}"')
                 ## Filter by cartography
-                filtered_idxs: Set[str] = set(
-                    trial_cart_metrics_filtered[IDX_COL].unique()
-                )
+                filtered_idxs: Set[str] = set(trial_cart_metrics_filtered[IDX_COL].unique())
                 filtered_text_gens: TextGenerationsPredictionsBase = text_gens.filter(
                     lambda row: row[index_col] in filtered_idxs
                 )
             else:
-                raise not_impl(
-                    "dataset_filter_params.filter_type", filter_params.filter_type
-                )
+                raise not_impl("dataset_filter_params.filter_type", filter_params.filter_type)
             self.info(
                 f">> Filtered from {len(text_gens)} => {len(filtered_text_gens)} generations for ("
                 f"dataset={dataset_name.canonical()}, "
@@ -546,9 +431,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
             f') from "{filtered_text_gens_file.path}".'
             f"\nLabel-distribution:"
         )
-        self.info(
-            calc_label_dist(filtered_text_gens.data.pandas(), label_col=label_col)
-        )
+        self.info(calc_label_dist(filtered_text_gens.data.pandas(), label_col=label_col))
         return filtered_text_gens
 
     @classmethod
@@ -573,9 +456,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         label_col: str = dataset.ground_truth_label_col_name
         ## Filter before sampling:
         if filter_label not in {LABEL_OVERALL, None}:
-            dataset: ClassificationData = dataset.filter(
-                lambda row: row[label_col] == filter_label
-            )
+            dataset: ClassificationData = dataset.filter(lambda row: row[label_col] == filter_label)
             if len(dataset) == 0:
                 raise ValueError(
                     f'Empty dataset after filtering "{dataset_name}" by {label_col}="{filter_label}"'
@@ -623,9 +504,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         if label_text == LABEL_OVERALL:
             ## If label is Overall, sample:
             if metrics_label_distribution == "train_set":
-                dataset_data_split: DataSplit = (
-                    DataSplit.TRAIN
-                )  ## Match the train dataset distribution.
+                dataset_data_split: DataSplit = DataSplit.TRAIN  ## Match the train dataset distribution.
                 dataset: ClassificationData = (
                     SynthesizRRDataset.get(dataset_name.canonical())
                     .datasets[dataset_data_split]
@@ -633,14 +512,10 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                     .to_layout(DataLayout.PANDAS)
                 )
                 dataset_label_col: str = dataset.ground_truth_label_col_name
-                text_gens: TextGenerationsPredictionsBase = text_gens.to_layout(
-                    DataLayout.PANDAS
-                )
+                text_gens: TextGenerationsPredictionsBase = text_gens.to_layout(DataLayout.PANDAS)
                 text_gens_idxs: np.ndarray = sample_idxs_match_distribution(
                     source=text_gens.data.pandas()[label_col],
-                    target=dataset.data.pandas()[
-                        dataset_label_col
-                    ],  ## Train set distribution
+                    target=dataset.data.pandas()[dataset_label_col],  ## Train set distribution
                     n=metrics_num_samples_per_label,
                     seed=seed,
                 )
@@ -650,9 +525,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
             elif metrics_label_distribution == "balanced":
                 text_gens_idxs: np.ndarray = sample_idxs_match_distribution(
                     source=text_gens.data.pandas()[label_col],
-                    target=pd.Series(
-                        [lb for lb in label_verbalizer.keys()]
-                    ),  ## Balanced
+                    target=pd.Series([lb for lb in label_verbalizer.keys()]),  ## Balanced
                     n=metrics_num_samples_per_label,
                     seed=seed,
                 )
@@ -668,10 +541,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                 lambda row: row[label_col] == label_text
             )
             if len(text_gens) == 0:
-                raise ValueError(
-                    f"Empty Text Generations after filtering "
-                    f'by {label_col}="{label_text}"'
-                )
+                raise ValueError(f'Empty Text Generations after filtering by {label_col}="{label_text}"')
             if (
                 isinstance(metrics_num_samples_per_label, int)
                 and len(text_gens) > metrics_num_samples_per_label
@@ -688,16 +558,10 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
             f"metrics_label_distribution={metrics_label_distribution}"
             f") label distribution for {self._combo_str(dataset_name, model_name, num_shots, label_text)} is:"
         )
-        self.info(
-            calc_label_dist(
-                filtered_sampled_text_gens.data.pandas(), label_col=label_col
-            )
-        )
+        self.info(calc_label_dist(filtered_sampled_text_gens.data.pandas(), label_col=label_col))
         if metrics_num_samples_per_label is not None:
             tol_num_rows: int = max(int(metrics_num_samples_per_label * tol), 1)
-            rows_diff: int = abs(
-                len(filtered_sampled_text_gens) - metrics_num_samples_per_label
-            )
+            rows_diff: int = abs(len(filtered_sampled_text_gens) - metrics_num_samples_per_label)
             if rows_diff > tol_num_rows and not metrics_override_row_count:
                 raise ValueError(
                     f"Expected text gens for label {label_text} to be between ["
@@ -705,8 +569,8 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                     f"{metrics_num_samples_per_label + tol_num_rows}"
                     f"] rows after sampling, but found {len(filtered_sampled_text_gens)} rows."
                 )
-        filtered_sampled_text_gens: TextGenerationsPredictionsBase = (
-            filtered_sampled_text_gens.update_params(data_split=DataSplit.TRAIN)
+        filtered_sampled_text_gens: TextGenerationsPredictionsBase = filtered_sampled_text_gens.update_params(
+            data_split=DataSplit.TRAIN
         )
         return filtered_sampled_text_gens
 
@@ -735,7 +599,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
     ) -> List[str]:
         if all_are_false(metrics_calc_overall, metrics_calc_labels):
             raise ValueError(
-                f"Should specify either `metrics_calc_overall=True` or `metrics_calc_labels=True` or both."
+                "Should specify either `metrics_calc_overall=True` or `metrics_calc_labels=True` or both."
             )
         if metrics_labels_to_evaluate is None:
             metrics_labels_to_evaluate: List[str] = []
@@ -780,12 +644,8 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                 for label_text in metrics_files[num_shots].keys()
             ]
         )
-        metrics_max_parallel: int = min(
-            get_default(metrics_max_parallel, num_combos), num_combos
-        )
-        executor: ThreadPoolExecutor = ThreadPoolExecutor(
-            max_workers=metrics_max_parallel
-        )
+        metrics_max_parallel: int = min(get_default(metrics_max_parallel, num_combos), num_combos)
+        executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=metrics_max_parallel)
         try:
             self.info(
                 f"Evaluating metrics for {num_combos} combinations of "
@@ -800,9 +660,7 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         results_dir=results_dir,
                         expt=expt,
                         text_gens=text_gens[num_shots],
-                        num_shots_labelwise_metric_files=metrics_files[num_shots][
-                            label_text
-                        ],
+                        num_shots_labelwise_metric_files=metrics_files[num_shots][label_text],
                         model_name=model_name,
                         dataset_name=dataset_name,
                         num_shots=num_shots,
@@ -812,9 +670,9 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         label_preservation_student=label_preservation_student,
                         dataset_cartography_student=dataset_cartography_student,
                         dataset_cartography_text_col=dataset_cartography_text_col,
-                        metrics_num_samples_per_label=get_default(
-                            metrics_num_samples_per_label, {}
-                        ).get(label_text),
+                        metrics_num_samples_per_label=get_default(metrics_num_samples_per_label, {}).get(
+                            label_text
+                        ),
                         metrics_label_distribution=metrics_label_distribution,
                         metrics_override_row_count=metrics_override_row_count,
                         val_set=val_set,
@@ -825,15 +683,11 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                         seed=seed,
                         executor=executor,
                     )
-            evaluated_metrics: Dict[
-                Optional[int], Dict[str, Dict[MetricName, Metric]]
-            ] = {}
+            evaluated_metrics: Dict[Optional[int], Dict[str, Dict[MetricName, Metric]]] = {}
             for num_shots in futs.keys():
                 evaluated_metrics.setdefault(num_shots, {})
                 for label_text in futs[num_shots].keys():
-                    evaluated_metrics[num_shots][label_text] = get_result(
-                        futs[num_shots][label_text]
-                    )
+                    evaluated_metrics[num_shots][label_text] = get_result(futs[num_shots][label_text])
             self.info(f"...done evaluating metrics for {num_combos} combinations.")
         finally:
             stop_executor(executor)
@@ -867,20 +721,18 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         metrics_parallelize: Parallelize,
         seed: int,
     ) -> Dict[MetricName, Metric]:
-        filtered_sampled_text_gens: TextGenerationsPredictionsBase = (
-            self.match_dataset_distribution(
-                text_gens=text_gens,
-                label_col=label_col,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                num_shots=num_shots,
-                metrics_num_samples_per_label=metrics_num_samples_per_label,
-                metrics_label_distribution=metrics_label_distribution,
-                metrics_override_row_count=metrics_override_row_count,
-                label_text=label_text,
-                label_verbalizer=label_verbalizer,
-                seed=seed,
-            )
+        filtered_sampled_text_gens: TextGenerationsPredictionsBase = self.match_dataset_distribution(
+            text_gens=text_gens,
+            label_col=label_col,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            num_shots=num_shots,
+            metrics_num_samples_per_label=metrics_num_samples_per_label,
+            metrics_label_distribution=metrics_label_distribution,
+            metrics_override_row_count=metrics_override_row_count,
+            label_text=label_text,
+            label_verbalizer=label_verbalizer,
+            seed=seed,
         )
         num_shots_labelwise_metrics: Metrics = Metrics.of(
             **{
@@ -924,17 +776,13 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
             evaluated_metric,
         ) in num_shots_labelwise_evaluated_metrics_list:
             evaluated_metric_name: MetricName = MetricName.from_metric(evaluated_metric)
-            metric_file: FileMetadata = num_shots_labelwise_metric_files[
-                evaluated_metric_name
-            ]
+            metric_file: FileMetadata = num_shots_labelwise_metric_files[evaluated_metric_name]
             self.info(
                 f'Writing metric "{evaluated_metric_name.canonical()}" for '
                 f"{self._combo_str(dataset_name, model_name, num_shots, label_text)} "
                 f'to "{metric_file.path}"...'
             )
-            Writer.of(FileFormat.PICKLE).write(
-                metric_file, data=evaluated_metric, overwrite=True
-            )
+            Writer.of(FileFormat.PICKLE).write(metric_file, data=evaluated_metric, overwrite=True)
             self.info(
                 f'...wrote metric "{evaluated_metric_name.canonical()}" for '
                 f"{self._combo_str(dataset_name, model_name, num_shots, label_text)}"
@@ -955,24 +803,15 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
         text_gens_metrics: Dict[Optional[int], Dict[str, Dict[MetricName, Metric]]] = {}
         for num_shots in metrics_files.keys():
             text_gens_metrics.setdefault(num_shots, {})
-            self.info(
-                f"\nLoading metrics for text generation for num_shots={num_shots}..."
-            )
+            self.info(f"\nLoading metrics for text generation for num_shots={num_shots}...")
             for label_text in metrics_files[num_shots].keys():
                 text_gens_metrics[num_shots].setdefault(label_text, {})
-                for metric_name, metric_file in metrics_files[num_shots][
-                    label_text
-                ].items():
-                    if (
-                        expt is Experiment.Gold
-                        and metric_name is MetricName.LabelPreservation
-                    ):
-                        best_trial_metrics: Metrics = (
-                            dataset_name.label_preservation_best_trial(
-                                results_dir=results_dir,
-                                student=label_preservation_student,
-                            )["best_trial_metrics"]
-                        )
+                for metric_name, metric_file in metrics_files[num_shots][label_text].items():
+                    if expt is Experiment.Gold and metric_name is MetricName.LabelPreservation:
+                        best_trial_metrics: Metrics = dataset_name.label_preservation_best_trial(
+                            results_dir=results_dir,
+                            student=label_preservation_student,
+                        )["best_trial_metrics"]
                         text_gens_metrics[num_shots][label_text][
                             metric_name
                         ]: Metric = best_trial_metrics.find(
@@ -985,17 +824,13 @@ class BaseCalculateTextGenMetrics(CachedResultsStep, ABC):
                             f"{self._combo_str(dataset_name, model_name, num_shots, label_text)} "
                             f'from "{metric_file.path}"...'
                         )
-                        text_gens_metrics[num_shots][label_text][
-                            metric_name
-                        ]: Metric = retry(
+                        text_gens_metrics[num_shots][label_text][metric_name]: Metric = retry(
                             Reader.of(FileFormat.PICKLE).read,
                             metric_file,
                             retries=10,
                             wait=10,
                         )
-            self.info(
-                f"\n...loading metrics for text generation for num_shots={num_shots}."
-            )
+            self.info(f"\n...loading metrics for text generation for num_shots={num_shots}.")
         return text_gens_metrics
 
     @safe_validate_arguments
@@ -1083,9 +918,7 @@ class GoldDatasetMetrics(BaseCalculateTextGenMetrics):
                     dataset_name=dataset_name,
                     label_text=label_text,
                     metric_name=metric_name,
-                    metrics_num_samples_per_label=metrics_num_samples_per_label[
-                        label_text
-                    ],
+                    metrics_num_samples_per_label=metrics_num_samples_per_label[label_text],
                     metrics_label_distribution=metrics_label_distribution,
                     student_hpo_validation_set=student_hpo_validation_set,
                     dataset_cartography_student=dataset_cartography_student,
@@ -1097,61 +930,59 @@ class GoldDatasetMetrics(BaseCalculateTextGenMetrics):
                     metric_file=metrics_files[label_text][metric_name],
                 ):
                     missing_metrics_files.setdefault(label_text, {})
-                    missing_metrics_files[label_text][
+                    missing_metrics_files[label_text][metric_name]: FileMetadata = metrics_files[label_text][
                         metric_name
-                    ]: FileMetadata = metrics_files[label_text][metric_name]
+                    ]
                 else:
                     self.info(
                         f'>> Metric "{metric_name.canonical()}" already exists for '
                         f"{self._combo_str(dataset_name, model_name=None, num_shots=None, label_text=label_text)}"
                         f'at "{metrics_files[label_text][metric_name].path}"...'
                     )
-        gold_dataset: ClassificationData = SynthesizRRDataset.get(
-            dataset_name.canonical()
-        ).train.read(retry=10, retry_wait=10)
-        gold_dataset_text_gens: TextGenerationsPredictionsBase = (
-            _clf_dataset_to_text_gens(
-                data=gold_dataset,
-                data_split=DataSplit.TRAIN,
-                text_col=text_col,
-                label_col=label_col,
-            )
+        gold_dataset: ClassificationData = SynthesizRRDataset.get(dataset_name.canonical()).train.read(
+            retry=10, retry_wait=10
+        )
+        gold_dataset_text_gens: TextGenerationsPredictionsBase = _clf_dataset_to_text_gens(
+            data=gold_dataset,
+            data_split=DataSplit.TRAIN,
+            text_col=text_col,
+            label_col=label_col,
         )
         if len(missing_metrics_files) > 0:
-            evaluated_metrics: Dict[
-                Optional[int], Dict[str, Dict[MetricName, Metric]]
-            ] = self._run_metrics_calculation(
+            evaluated_metrics: Dict[Optional[int], Dict[str, Dict[MetricName, Metric]]] = (
+                self._run_metrics_calculation(
+                    results_dir=results_dir,
+                    expt=Experiment.Gold,
+                    metrics_files={None: missing_metrics_files},
+                    text_gens={None: gold_dataset_text_gens},
+                    model_name=None,
+                    dataset_name=dataset_name,
+                    label_col=label_col,
+                    references_col=references_col,
+                    label_verbalizer=label_verbalizer,
+                    seed=seed,
+                    metrics_num_samples_per_label=metrics_num_samples_per_label,
+                    metrics_label_distribution=metrics_label_distribution,
+                    metrics_override_row_count=metrics_override_row_count,
+                    val_set=None,
+                    student_text_col=text_col,
+                    student_hpo_validation_set=student_hpo_validation_set,
+                    label_preservation_student=label_preservation_student,
+                    dataset_cartography_student=dataset_cartography_student,
+                    dataset_cartography_text_col=dataset_cartography_text_col,
+                    metrics_parallelize=metrics_parallelize,
+                    metrics_max_parallel=metrics_max_parallel,
+                )
+            )
+        gold_dataset_text_gens_metrics: Dict[Optional[int], Dict[str, Dict[MetricName, Metric]]] = (
+            self._load_metrics(
                 results_dir=results_dir,
                 expt=Experiment.Gold,
-                metrics_files={None: missing_metrics_files},
-                text_gens={None: gold_dataset_text_gens},
-                model_name=None,
+                metrics_files={None: metrics_files},
                 dataset_name=dataset_name,
-                label_col=label_col,
-                references_col=references_col,
-                label_verbalizer=label_verbalizer,
-                seed=seed,
-                metrics_num_samples_per_label=metrics_num_samples_per_label,
-                metrics_label_distribution=metrics_label_distribution,
-                metrics_override_row_count=metrics_override_row_count,
-                val_set=None,
-                student_text_col=text_col,
-                student_hpo_validation_set=student_hpo_validation_set,
+                model_name=None,
                 label_preservation_student=label_preservation_student,
-                dataset_cartography_student=dataset_cartography_student,
-                dataset_cartography_text_col=dataset_cartography_text_col,
-                metrics_parallelize=metrics_parallelize,
-                metrics_max_parallel=metrics_max_parallel,
             )
-        gold_dataset_text_gens_metrics: Dict[
-            Optional[int], Dict[str, Dict[MetricName, Metric]]
-        ] = self._load_metrics(
-            results_dir=results_dir,
-            expt=Experiment.Gold,
-            metrics_files={None: metrics_files},
-            dataset_name=dataset_name,
-            model_name=None,
-            label_preservation_student=label_preservation_student,
         )
         return dict(
             gold_dataset=gold_dataset,
@@ -1175,21 +1006,16 @@ class GoldDatasetMetrics(BaseCalculateTextGenMetrics):
         **kwargs,
     ) -> FileMetadata:
         ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
-        metrics_num_samples_per_label_str: str = get_default(
-            metrics_num_samples_per_label, "all"
-        )
+        metrics_num_samples_per_label_str: str = get_default(metrics_num_samples_per_label, "all")
 
         student_hpo_validation_set_str: str = ""
         if metric_name.is_student_hpo():
-            student_hpo_validation_set_str: str = (
-                f"-hpo_set={student_hpo_validation_set}"
-            )
+            student_hpo_validation_set_str: str = f"-hpo_set={student_hpo_validation_set}"
 
         dataset_cartography_str: str = ""
         if metric_name is MetricName.StudentDatasetCartography:
             dataset_cartography_str: str = (
-                f"-cart={dataset_cartography_student.canonical()}"
-                f"_col={dataset_cartography_text_col}"
+                f"-cart={dataset_cartography_student.canonical()}_col={dataset_cartography_text_col}"
             )
 
         return (
@@ -1205,9 +1031,7 @@ class GoldDatasetMetrics(BaseCalculateTextGenMetrics):
                 f"metrics_num_samples_per_label={metrics_num_samples_per_label_str}",
                 return_metadata=True,
             )
-            .subdir_in_dir(
-                f"metric_name={metric_name.canonical()}", return_metadata=True
-            )
+            .subdir_in_dir(f"metric_name={metric_name.canonical()}", return_metadata=True)
             .file_in_dir(
                 f"metric"
                 f"-metrics_label_distribution={metrics_label_distribution}"
@@ -1258,9 +1082,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
         filter_params: DatasetFilterParams = DatasetFilterParams(filter_type="none"),
         metrics_to_evaluate: List[MetricName],
         metrics_label_distribution: Literal["balanced", "train_set"],
-        metrics_num_samples_per_label: Optional[
-            Union[Dict[str, conint(ge=1)], conint(ge=1)]
-        ],
+        metrics_num_samples_per_label: Optional[Union[Dict[str, conint(ge=1)], conint(ge=1)]],
         metrics_calc_overall: bool = True,
         metrics_calc_labels: bool = False,
         metrics_labels_to_evaluate: Optional[List[str]] = None,
@@ -1295,11 +1117,9 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             num_samples_per_label=num_samples_per_label,
             label_verbalizer={**label_verbalizer, LABEL_OVERALL: LABEL_OVERALL},
         )
-        metrics_num_samples_per_label: Optional[Dict[str, int]] = (
-            expand_num_samples_per_label(
-                num_samples_per_label=metrics_num_samples_per_label,
-                label_verbalizer={**label_verbalizer, LABEL_OVERALL: LABEL_OVERALL},
-            )
+        metrics_num_samples_per_label: Optional[Dict[str, int]] = expand_num_samples_per_label(
+            num_samples_per_label=metrics_num_samples_per_label,
+            label_verbalizer={**label_verbalizer, LABEL_OVERALL: LABEL_OVERALL},
         )
         metrics_labels_to_evaluate: List[str] = self._labels_to_evaluate(
             metrics_labels_to_evaluate=metrics_labels_to_evaluate,
@@ -1308,14 +1128,12 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             label_verbalizer=label_verbalizer,
         )
 
-        icl_template, icl_template_hash, prompt_template, prompt_template_hash = (
-            get_templates_and_hashes(
-                expt=Experiment.SynthesizRR,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                icl_template=icl_template,
-                prompt_template=prompt_template,
-            )
+        icl_template, icl_template_hash, prompt_template, prompt_template_hash = get_templates_and_hashes(
+            expt=Experiment.SynthesizRR,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            icl_template=icl_template,
+            prompt_template=prompt_template,
         )
 
         text_gens_expanded: Dict[int, TextGenerationsPredictionsBase] = {
@@ -1334,65 +1152,61 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             for num_shots in text_gens
         }
 
-        text_gens_expanded_filtered: Dict[int, TextGenerationsPredictionsBase] = (
-            accumulate(
-                {
-                    num_shots: run_concurrent(
-                        self.filter_text_gens,
-                        text_gens_expanded[num_shots],
+        text_gens_expanded_filtered: Dict[int, TextGenerationsPredictionsBase] = accumulate(
+            {
+                num_shots: run_concurrent(
+                    self.filter_text_gens,
+                    text_gens_expanded[num_shots],
+                    filter_params=filter_params,
+                    dataset_cartography_student=dataset_cartography_student,
+                    dataset_cartography_text_col=dataset_cartography_text_col,
+                    num_shots=num_shots,
+                    model_name=model_name,
+                    dataset_name=dataset_name,
+                    label_verbalizer=label_verbalizer,
+                    label_col=label_col,
+                    seed=seed,
+                    verbosity=self.verbosity,
+                    filter_text_gens_results_dir=self.save_to(
+                        save_type="expanded-filtered",
+                        results_dir=results_dir,
+                        dataset_name=dataset_name,
+                        corpus=corpus,
+                        retriever=retriever,
+                        model_name=model_name,
+                        num_shots=num_shots,
+                        label_text=LABEL_OVERALL,
+                        label_verbalizer=label_verbalizer,
+                        seed_set_data_split=seed_set_data_split,
+                        seed_type=seed_type,
+                        seed_generation_params_hash=seed_generation_params_hash,
+                        icl_type=icl_type,
+                        retr_icl_top_ks=retr_icl_top_ks,
+                        retr_icl_distance_range=retr_icl_distance_range,
+                        retr_icl_token_range=retr_icl_token_range,
+                        synthesizrr_top_k_range=synthesizrr_top_k_range,
+                        synthesizrr_distance_range=synthesizrr_distance_range,
+                        synthesizrr_max_tokens=synthesizrr_max_tokens,
+                        top_p=top_p,
+                        temperature=temperature,
+                        icl_template_hash=icl_template_hash,
+                        prompt_template_hash=prompt_template_hash,
+                        num_samples_per_label=get_default(num_samples_per_label, {}).get(LABEL_OVERALL),
+                        text_gens_parser=text_gens_parser,
                         filter_params=filter_params,
+                        metric_name=MetricName.NoMetric,
+                        metrics_num_samples_per_label=get_default(metrics_num_samples_per_label, {}).get(
+                            LABEL_OVERALL
+                        ),
+                        metrics_label_distribution=metrics_label_distribution,
+                        student_hpo_validation_set=student_hpo_validation_set,
                         dataset_cartography_student=dataset_cartography_student,
                         dataset_cartography_text_col=dataset_cartography_text_col,
-                        num_shots=num_shots,
-                        model_name=model_name,
-                        dataset_name=dataset_name,
-                        label_verbalizer=label_verbalizer,
-                        label_col=label_col,
                         seed=seed,
-                        verbosity=self.verbosity,
-                        filter_text_gens_results_dir=self.save_to(
-                            save_type="expanded-filtered",
-                            results_dir=results_dir,
-                            dataset_name=dataset_name,
-                            corpus=corpus,
-                            retriever=retriever,
-                            model_name=model_name,
-                            num_shots=num_shots,
-                            label_text=LABEL_OVERALL,
-                            label_verbalizer=label_verbalizer,
-                            seed_set_data_split=seed_set_data_split,
-                            seed_type=seed_type,
-                            seed_generation_params_hash=seed_generation_params_hash,
-                            icl_type=icl_type,
-                            retr_icl_top_ks=retr_icl_top_ks,
-                            retr_icl_distance_range=retr_icl_distance_range,
-                            retr_icl_token_range=retr_icl_token_range,
-                            synthesizrr_top_k_range=synthesizrr_top_k_range,
-                            synthesizrr_distance_range=synthesizrr_distance_range,
-                            synthesizrr_max_tokens=synthesizrr_max_tokens,
-                            top_p=top_p,
-                            temperature=temperature,
-                            icl_template_hash=icl_template_hash,
-                            prompt_template_hash=prompt_template_hash,
-                            num_samples_per_label=get_default(
-                                num_samples_per_label, {}
-                            ).get(LABEL_OVERALL),
-                            text_gens_parser=text_gens_parser,
-                            filter_params=filter_params,
-                            metric_name=MetricName.NoMetric,
-                            metrics_num_samples_per_label=get_default(
-                                metrics_num_samples_per_label, {}
-                            ).get(LABEL_OVERALL),
-                            metrics_label_distribution=metrics_label_distribution,
-                            student_hpo_validation_set=student_hpo_validation_set,
-                            dataset_cartography_student=dataset_cartography_student,
-                            dataset_cartography_text_col=dataset_cartography_text_col,
-                            seed=seed,
-                        ),
-                    )
-                    for num_shots in text_gens_expanded
-                }
-            )
+                    ),
+                )
+                for num_shots in text_gens_expanded
+            }
         )
 
         metrics_files: Dict[int, Dict[str, Dict[MetricName, FileMetadata]]] = {}
@@ -1402,9 +1216,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             for label_text in metrics_labels_to_evaluate:
                 metrics_files[num_shots].setdefault(label_text, {})
                 for metric_name in metrics_to_evaluate:
-                    metrics_files[num_shots][label_text][
-                        metric_name
-                    ]: FileMetadata = self.save_to(
+                    metrics_files[num_shots][label_text][metric_name]: FileMetadata = self.save_to(
                         results_dir=results_dir,
                         dataset_name=dataset_name,
                         corpus=corpus,
@@ -1427,15 +1239,13 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         temperature=temperature,
                         icl_template_hash=icl_template_hash,
                         prompt_template_hash=prompt_template_hash,
-                        num_samples_per_label=get_default(
-                            num_samples_per_label, {}
-                        ).get(label_text),
+                        num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
                         text_gens_parser=text_gens_parser,
                         filter_params=filter_params,
                         metric_name=metric_name,
-                        metrics_num_samples_per_label=get_default(
-                            metrics_num_samples_per_label, {}
-                        ).get(label_text),
+                        metrics_num_samples_per_label=get_default(metrics_num_samples_per_label, {}).get(
+                            label_text
+                        ),
                         metrics_label_distribution=metrics_label_distribution,
                         student_hpo_validation_set=student_hpo_validation_set,
                         dataset_cartography_student=dataset_cartography_student,
@@ -1450,9 +1260,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         missing_metrics_files[num_shots].setdefault(label_text, {})
                         missing_metrics_files[num_shots][label_text][
                             metric_name
-                        ]: FileMetadata = metrics_files[num_shots][label_text][
-                            metric_name
-                        ]
+                        ]: FileMetadata = metrics_files[num_shots][label_text][metric_name]
                     else:
                         self.info(
                             f'>> Metric "{metric_name.canonical()}" already exists for '
@@ -1460,40 +1268,38 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                             f'at "{metrics_files[num_shots][label_text][metric_name].path}"...'
                         )
         if len(missing_metrics_files) > 0:
-            evaluated_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = (
-                self._run_metrics_calculation(
-                    results_dir=results_dir,
-                    expt=Experiment.SynthesizRR,
-                    metrics_files=missing_metrics_files,
-                    text_gens=text_gens_expanded_filtered,
-                    model_name=model_name,
-                    dataset_name=dataset_name,
-                    label_col=label_col,
-                    references_col=references_col,
-                    label_verbalizer=label_verbalizer,
-                    seed=seed,
-                    metrics_num_samples_per_label=metrics_num_samples_per_label,
-                    metrics_label_distribution=metrics_label_distribution,
-                    metrics_override_row_count=metrics_override_row_count,
-                    val_set=seed_set,
-                    student_text_col=GENERATED_TEXTS_COL,
-                    student_hpo_validation_set=student_hpo_validation_set,
-                    label_preservation_student=label_preservation_student,
-                    dataset_cartography_student=dataset_cartography_student,
-                    dataset_cartography_text_col=dataset_cartography_text_col,
-                    metrics_parallelize=metrics_parallelize,
-                    metrics_max_parallel=metrics_max_parallel,
-                )
+            evaluated_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = self._run_metrics_calculation(
+                results_dir=results_dir,
+                expt=Experiment.SynthesizRR,
+                metrics_files=missing_metrics_files,
+                text_gens=text_gens_expanded_filtered,
+                model_name=model_name,
+                dataset_name=dataset_name,
+                label_col=label_col,
+                references_col=references_col,
+                label_verbalizer=label_verbalizer,
+                seed=seed,
+                metrics_num_samples_per_label=metrics_num_samples_per_label,
+                metrics_label_distribution=metrics_label_distribution,
+                metrics_override_row_count=metrics_override_row_count,
+                val_set=seed_set,
+                student_text_col=GENERATED_TEXTS_COL,
+                student_hpo_validation_set=student_hpo_validation_set,
+                label_preservation_student=label_preservation_student,
+                dataset_cartography_student=dataset_cartography_student,
+                dataset_cartography_text_col=dataset_cartography_text_col,
+                metrics_parallelize=metrics_parallelize,
+                metrics_max_parallel=metrics_max_parallel,
             )
-        text_gens_expanded_filtered_metrics: Dict[
-            int, Dict[str, Dict[MetricName, Metric]]
-        ] = self._load_metrics(
-            results_dir=results_dir,
-            expt=Experiment.SynthesizRR,
-            metrics_files=metrics_files,
-            dataset_name=dataset_name,
-            model_name=model_name,
-            label_preservation_student=label_preservation_student,
+        text_gens_expanded_filtered_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = (
+            self._load_metrics(
+                results_dir=results_dir,
+                expt=Experiment.SynthesizRR,
+                metrics_files=metrics_files,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                label_preservation_student=label_preservation_student,
+            )
         )
         return dict(
             text_gens_expanded=text_gens_expanded,
@@ -1504,9 +1310,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
 
     def save_to(
         self,
-        save_type: Literal[
-            "metrics", "expanded", "filtered", "expanded-filtered"
-        ] = "metrics",
+        save_type: Literal["metrics", "expanded", "filtered", "expanded-filtered"] = "metrics",
         *,
         results_dir: FileMetadata,  ## E.g. RESULTS_DIR/,
         dataset_name: DatasetName,  ## E.g. ag_news
@@ -1552,18 +1356,16 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
             raise not_impl("seed_type", seed_type)
 
         if icl_type == "retrieved":
-            icl_type_str: str = f"retrieved_icl_dataset"
+            icl_type_str: str = "retrieved_icl_dataset"
         elif icl_type == "curated":
-            icl_type_str: str = f"curated_icl_dataset"
+            icl_type_str: str = "curated_icl_dataset"
         elif icl_type == "seed":
             icl_type_str: str = f"{seed_type}_seed_icl_dataset"
         else:
             raise not_impl("icl_type", icl_type)
 
         num_samples_per_label_str: str = get_default(num_samples_per_label, "all")
-        metrics_num_samples_per_label_str: str = get_default(
-            metrics_num_samples_per_label, "all"
-        )
+        metrics_num_samples_per_label_str: str = get_default(metrics_num_samples_per_label, "all")
 
         if save_type != "metrics":
             if icl_template_hash is not None:
@@ -1572,37 +1374,24 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                 prompt_template_hash: str = prompt_template_hash[:6]
 
         icl_template_hash_str: str = (
-            ""
-            if icl_template_hash is None
-            else f"-icl_template_hash={icl_template_hash}"
+            "" if icl_template_hash is None else f"-icl_template_hash={icl_template_hash}"
         )
         prompt_template_hash_str: str = (
-            ""
-            if prompt_template_hash is None
-            else f"-prompt_template_hash={prompt_template_hash}"
+            "" if prompt_template_hash is None else f"-prompt_template_hash={prompt_template_hash}"
         )
 
         label_verbalizer_str: str = ""
         if label_text == LABEL_OVERALL:
             if label_verbalizer != dataset_name.label_verbalizer():
-                label_verbalizer_str: str = (
-                    f"-vbs={StringUtil.hash(label_verbalizer, max_len=4)}"
-                )
+                label_verbalizer_str: str = f"-vbs={StringUtil.hash(label_verbalizer, max_len=4)}"
         else:
             assert label_text in label_verbalizer
             assert label_text in dataset_name.label_verbalizer()
-            if (
-                label_verbalizer[label_text]
-                != dataset_name.label_verbalizer()[label_text]
-            ):
-                label_verbalizer_str: str = (
-                    f"-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}"
-                )
+            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
+                label_verbalizer_str: str = f"-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}"
 
         text_gens_parser_str: str = ""
-        text_gens_parser_body_hash: str = StringUtil.hash(
-            get_fn_spec(text_gens_parser).source_body
-        )
+        text_gens_parser_body_hash: str = StringUtil.hash(get_fn_spec(text_gens_parser).source_body)
         if text_gens_parser_body_hash != StringUtil.hash(
             get_fn_spec(dataset_name.text_gens_parser()).source_body
         ):
@@ -1625,21 +1414,16 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
 
         student_hpo_validation_set_str: str = ""
         if metric_name.is_student_hpo():
-            student_hpo_validation_set_str: str = (
-                f"-hpo_set={student_hpo_validation_set}"
-            )
+            student_hpo_validation_set_str: str = f"-hpo_set={student_hpo_validation_set}"
 
         dataset_cartography_str: str = ""
         if metric_name is MetricName.StudentDatasetCartography:
             dataset_cartography_str: str = (
-                f"-cart={dataset_cartography_student.canonical()}"
-                f"_col={dataset_cartography_text_col}"
+                f"-cart={dataset_cartography_student.canonical()}_col={dataset_cartography_text_col}"
             )
 
         results_path = (
-            results_dir.subdir_in_dir(
-                "retrieval-augmented-dataset-generation", return_metadata=True
-            )
+            results_dir.subdir_in_dir("retrieval-augmented-dataset-generation", return_metadata=True)
             .subdir_in_dir(dataset_name.canonical(), return_metadata=True)
             .subdir_in_dir(f"synthesizrr-generations-{save_type}", return_metadata=True)
             .subdir_in_dir(corpus.canonical(), return_metadata=True)
@@ -1680,9 +1464,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
         if save_type == "metrics":
             try:
                 return (
-                    results_path.subdir_in_dir(
-                        f"label={label_text}", return_metadata=True
-                    )
+                    results_path.subdir_in_dir(f"label={label_text}", return_metadata=True)
                     .subdir_in_dir(
                         f"metrics_label_distribution={metrics_label_distribution}",
                         return_metadata=True,
@@ -1691,9 +1473,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         f"metrics_num_samples_per_label={metrics_num_samples_per_label_str}",
                         return_metadata=True,
                     )
-                    .subdir_in_dir(
-                        f"metric_name={metric_name.canonical()}", return_metadata=True
-                    )
+                    .subdir_in_dir(f"metric_name={metric_name.canonical()}", return_metadata=True)
                     .file_in_dir(
                         f"metric"
                         f"-label={label_text}"
@@ -1706,11 +1486,9 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                     )
                     .update_params(file_format=FileFormat.PICKLE)
                 )
-            except ValidationError as e:
+            except ValidationError:
                 return (
-                    results_path.subdir_in_dir(
-                        f"label={label_text}", return_metadata=True
-                    )
+                    results_path.subdir_in_dir(f"label={label_text}", return_metadata=True)
                     .subdir_in_dir(
                         f"metrics_label_distribution={metrics_label_distribution}",
                         return_metadata=True,
@@ -1719,9 +1497,7 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                         f"metrics_num_samples_per_label={metrics_num_samples_per_label_str}",
                         return_metadata=True,
                     )
-                    .subdir_in_dir(
-                        f"metric_name={metric_name.canonical()}", return_metadata=True
-                    )
+                    .subdir_in_dir(f"metric_name={metric_name.canonical()}", return_metadata=True)
                     .file_in_dir(
                         f"metric"
                         f"-label={label_text}"
@@ -1742,10 +1518,9 @@ class SynthesizRRTextGenMetrics(BaseCalculateTextGenMetrics):
                     f"synthesizrr-generations-{save_type}{_params}",
                     return_metadata=True,
                 )
-            except ValidationError as e:
+            except ValidationError:
                 return results_path.subdir_in_dir(
-                    f"synthesizrr-generations-{save_type}"
-                    f"-params_hash={StringUtil.hash(_params, max_len=6)}",
+                    f"synthesizrr-generations-{save_type}-params_hash={StringUtil.hash(_params, max_len=6)}",
                     return_metadata=True,
                 )
 
@@ -1813,14 +1588,12 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             label_verbalizer=label_verbalizer,
         )
 
-        icl_template, icl_template_hash, prompt_template, prompt_template_hash = (
-            get_templates_and_hashes(
-                expt=Experiment.FewGen,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                icl_template=icl_template,
-                prompt_template=prompt_template,
-            )
+        icl_template, icl_template_hash, prompt_template, prompt_template_hash = get_templates_and_hashes(
+            expt=Experiment.FewGen,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            icl_template=icl_template,
+            prompt_template=prompt_template,
         )
 
         text_gens_expanded: Dict[int, TextGenerationsPredictionsBase] = {
@@ -1872,9 +1645,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                     text_gens_parser=text_gens_parser,
                     filter_params=filter_params,
                     metric_name=MetricName.NoMetric,
-                    metrics_num_samples_per_label=metrics_num_samples_per_label[
-                        LABEL_OVERALL
-                    ],
+                    metrics_num_samples_per_label=metrics_num_samples_per_label[LABEL_OVERALL],
                     metrics_label_distribution=metrics_label_distribution,
                     student_hpo_validation_set=student_hpo_validation_set,
                     dataset_cartography_student=dataset_cartography_student,
@@ -1892,9 +1663,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             for label_text in metrics_labels_to_evaluate:
                 metrics_files[num_shots].setdefault(label_text, {})
                 for metric_name in metrics_to_evaluate:
-                    metrics_files[num_shots][label_text][
-                        metric_name
-                    ]: FileMetadata = self.save_to(
+                    metrics_files[num_shots][label_text][metric_name]: FileMetadata = self.save_to(
                         results_dir=results_dir,
                         dataset_name=dataset_name,
                         model_name=model_name,
@@ -1913,9 +1682,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                         text_gens_parser=text_gens_parser,
                         filter_params=filter_params,
                         metric_name=metric_name,
-                        metrics_num_samples_per_label=metrics_num_samples_per_label[
-                            label_text
-                        ],
+                        metrics_num_samples_per_label=metrics_num_samples_per_label[label_text],
                         metrics_label_distribution=metrics_label_distribution,
                         student_hpo_validation_set=student_hpo_validation_set,
                         dataset_cartography_student=dataset_cartography_student,
@@ -1930,9 +1697,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                         missing_metrics_files[num_shots].setdefault(label_text, {})
                         missing_metrics_files[num_shots][label_text][
                             metric_name
-                        ]: FileMetadata = metrics_files[num_shots][label_text][
-                            metric_name
-                        ]
+                        ]: FileMetadata = metrics_files[num_shots][label_text][metric_name]
                     else:
                         self.info(
                             f'>> Metric "{metric_name.canonical()}" already exists for '
@@ -1940,40 +1705,38 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                             f'at "{metrics_files[num_shots][label_text][metric_name].path}"...'
                         )
         if len(missing_metrics_files) > 0:
-            evaluated_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = (
-                self._run_metrics_calculation(
-                    results_dir=results_dir,
-                    expt=Experiment.FewGen,
-                    metrics_files=missing_metrics_files,
-                    text_gens=text_gens_expanded_filtered,
-                    model_name=model_name,
-                    dataset_name=dataset_name,
-                    label_col=label_col,
-                    references_col=references_col,
-                    label_verbalizer=label_verbalizer,
-                    seed=seed,
-                    metrics_num_samples_per_label=metrics_num_samples_per_label,
-                    metrics_label_distribution=metrics_label_distribution,
-                    metrics_override_row_count=metrics_override_row_count,
-                    val_set=seed_set,
-                    student_text_col=GENERATED_TEXTS_COL,
-                    student_hpo_validation_set=student_hpo_validation_set,
-                    label_preservation_student=label_preservation_student,
-                    dataset_cartography_student=dataset_cartography_student,
-                    dataset_cartography_text_col=dataset_cartography_text_col,
-                    metrics_parallelize=metrics_parallelize,
-                    metrics_max_parallel=metrics_max_parallel,
-                )
+            evaluated_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = self._run_metrics_calculation(
+                results_dir=results_dir,
+                expt=Experiment.FewGen,
+                metrics_files=missing_metrics_files,
+                text_gens=text_gens_expanded_filtered,
+                model_name=model_name,
+                dataset_name=dataset_name,
+                label_col=label_col,
+                references_col=references_col,
+                label_verbalizer=label_verbalizer,
+                seed=seed,
+                metrics_num_samples_per_label=metrics_num_samples_per_label,
+                metrics_label_distribution=metrics_label_distribution,
+                metrics_override_row_count=metrics_override_row_count,
+                val_set=seed_set,
+                student_text_col=GENERATED_TEXTS_COL,
+                student_hpo_validation_set=student_hpo_validation_set,
+                label_preservation_student=label_preservation_student,
+                dataset_cartography_student=dataset_cartography_student,
+                dataset_cartography_text_col=dataset_cartography_text_col,
+                metrics_parallelize=metrics_parallelize,
+                metrics_max_parallel=metrics_max_parallel,
             )
-        text_gens_expanded_filtered_metrics: Dict[
-            int, Dict[str, Dict[MetricName, Metric]]
-        ] = self._load_metrics(
-            results_dir=results_dir,
-            expt=Experiment.FewGen,
-            metrics_files=metrics_files,
-            dataset_name=dataset_name,
-            model_name=model_name,
-            label_preservation_student=label_preservation_student,
+        text_gens_expanded_filtered_metrics: Dict[int, Dict[str, Dict[MetricName, Metric]]] = (
+            self._load_metrics(
+                results_dir=results_dir,
+                expt=Experiment.FewGen,
+                metrics_files=metrics_files,
+                dataset_name=dataset_name,
+                model_name=model_name,
+                label_preservation_student=label_preservation_student,
+            )
         )
         return dict(
             text_gens_expanded=text_gens_expanded,
@@ -1984,9 +1747,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
 
     def save_to(
         self,
-        save_type: Literal[
-            "metrics", "expanded", "filtered", "expanded-filtered"
-        ] = "metrics",
+        save_type: Literal["metrics", "expanded", "filtered", "expanded-filtered"] = "metrics",
         *,
         results_dir: FileMetadata,  ## E.g. RESULTS_DIR/,
         dataset_name: DatasetName,  ## E.g. ag_news
@@ -2024,9 +1785,7 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             raise not_impl("seed_type", seed_type)
 
         num_samples_per_label_str: str = get_default(num_samples_per_label, "all")
-        metrics_num_samples_per_label_str: str = get_default(
-            metrics_num_samples_per_label, "all"
-        )
+        metrics_num_samples_per_label_str: str = get_default(metrics_num_samples_per_label, "all")
 
         if save_type != "metrics":
             if icl_template_hash is not None:
@@ -2035,37 +1794,24 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                 prompt_template_hash: str = prompt_template_hash[:6]
 
         icl_template_hash_str: str = (
-            ""
-            if icl_template_hash is None
-            else f"-icl_template_hash={icl_template_hash}"
+            "" if icl_template_hash is None else f"-icl_template_hash={icl_template_hash}"
         )
         prompt_template_hash_str: str = (
-            ""
-            if prompt_template_hash is None
-            else f"-prompt_template_hash={prompt_template_hash}"
+            "" if prompt_template_hash is None else f"-prompt_template_hash={prompt_template_hash}"
         )
 
         label_verbalizer_str: str = ""
         if label_text == LABEL_OVERALL:
             if label_verbalizer != dataset_name.label_verbalizer():
-                label_verbalizer_str: str = (
-                    f"-vbs={StringUtil.hash(label_verbalizer, max_len=4)}"
-                )
+                label_verbalizer_str: str = f"-vbs={StringUtil.hash(label_verbalizer, max_len=4)}"
         else:
             assert label_text in label_verbalizer
             assert label_text in dataset_name.label_verbalizer()
-            if (
-                label_verbalizer[label_text]
-                != dataset_name.label_verbalizer()[label_text]
-            ):
-                label_verbalizer_str: str = (
-                    f"-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}"
-                )
+            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
+                label_verbalizer_str: str = f"-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}"
 
         text_gens_parser_str: str = ""
-        text_gens_parser_body_hash: str = StringUtil.hash(
-            get_fn_spec(text_gens_parser).source_body
-        )
+        text_gens_parser_body_hash: str = StringUtil.hash(get_fn_spec(text_gens_parser).source_body)
         if text_gens_parser_body_hash != StringUtil.hash(
             get_fn_spec(dataset_name.text_gens_parser()).source_body
         ):
@@ -2088,15 +1834,12 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
 
         student_hpo_validation_set_str: str = ""
         if metric_name.is_student_hpo():
-            student_hpo_validation_set_str: str = (
-                f"-hpo_set={student_hpo_validation_set}"
-            )
+            student_hpo_validation_set_str: str = f"-hpo_set={student_hpo_validation_set}"
 
         dataset_cartography_str: str = ""
         if metric_name is MetricName.StudentDatasetCartography:
             dataset_cartography_str: str = (
-                f"-cart={dataset_cartography_student.canonical()}"
-                f"_col={dataset_cartography_text_col}"
+                f"-cart={dataset_cartography_student.canonical()}_col={dataset_cartography_text_col}"
             )
 
         results_path = (
@@ -2122,9 +1865,110 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
                     f"metrics_num_samples_per_label={metrics_num_samples_per_label_str}",
                     return_metadata=True,
                 )
-                .subdir_in_dir(
-                    f"metric_name={metric_name.canonical()}", return_metadata=True
+                .subdir_in_dir(f"metric_name={metric_name.canonical()}", return_metadata=True)
+                .file_in_dir(
+                    f"metric"
+                    f"-metrics_label_distribution={metrics_label_distribution}"
+                    f"-metrics_num_samples_per_label={metrics_num_samples_per_label}"
+                    f"-metric_name={metric_name.canonical()}"
+                    f"-seed_type={seed_type_str}"
+                    f"-dataset={dataset_name.canonical()}"
+                    f"-model_name={model_name.canonical()}"
+                    f"-num_samples_per_label={num_samples_per_label_str}"
+                    f"-num_shots={num_shots}"
+                    f"-label={label_text}"
+                    f"-seed={seed}"
+                    f"-fewgen_max_tokens={fewgen_max_tokens}"
+                    f"{icl_template_hash_str}"
+                    f"{prompt_template_hash_str}"
+                    f"{label_verbalizer_str}"
+                    f"{student_hpo_validation_set_str}"
+                    f"{dataset_cartography_str}"
+                    f"{text_gens_parser_str}"
+                    f"{filter_params_str}"
+                    f"{top_p_str}"
+                    f"{temperature_str}"
+                    f".pkl",
+                    return_metadata=True,
                 )
+                .update_params(file_format=FileFormat.PICKLE)
+            )
+        else:
+            ## Return a directory to save the text generations
+            return results_path.subdir_in_dir(f"fewgen-generations-{save_type}")
+            if icl_template_hash is not None:
+                icl_template_hash: str = icl_template_hash[:6]
+            if prompt_template_hash is not None:
+                prompt_template_hash: str = prompt_template_hash[:6]
+
+        icl_template_hash_str: str = (
+            "" if icl_template_hash is None else f"-icl_template_hash={icl_template_hash}"
+        )
+        prompt_template_hash_str: str = (
+            "" if prompt_template_hash is None else f"-prompt_template_hash={prompt_template_hash}"
+        )
+
+        label_verbalizer_str: str = ""
+        if label_text == LABEL_OVERALL:
+            if label_verbalizer != dataset_name.label_verbalizer():
+                label_verbalizer_str: str = f"-vbs={StringUtil.hash(label_verbalizer, max_len=4)}"
+        else:
+            assert label_text in label_verbalizer
+            assert label_text in dataset_name.label_verbalizer()
+            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
+                label_verbalizer_str: str = f"-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}"
+
+        text_gens_parser_str: str = ""
+        text_gens_parser_body_hash: str = StringUtil.hash(get_fn_spec(text_gens_parser).source_body)
+        if text_gens_parser_body_hash != StringUtil.hash(
+            get_fn_spec(dataset_name.text_gens_parser()).source_body
+        ):
+            text_gens_parser_str: str = f"-pr={text_gens_parser_body_hash[:6]}"
+
+        filter_params_str: str = ""
+        if filter_params.filter_type != "none":
+            filter_str, filter_hash = filter_params.save_key_and_hash(
+                dataset_cartography_student=dataset_cartography_student,
+                dataset_cartography_text_col=dataset_cartography_text_col,
+            )
+            filter_params_str: str = f"-f={filter_hash}"
+
+        top_p_str: str = ""
+        if top_p != DEFAULT_TOP_P:
+            top_p_str = f"-top_p={top_p:.2f}"
+        temperature_str: str = ""
+        if temperature != DEFAULT_TEMPERATURE:
+            temperature_str = f"-temp={temperature}"
+
+        student_hpo_validation_set_str: str = ""
+        if metric_name.is_student_hpo():
+            student_hpo_validation_set_str: str = f"-hpo_set={student_hpo_validation_set}"
+
+        dataset_cartography_str: str = ""
+        if metric_name is MetricName.StudentDatasetCartography:
+            dataset_cartography_str: str = (
+                f"-cart={dataset_cartography_student.canonical()}_col={dataset_cartography_text_col}"
+            )
+
+        results_path = (
+            results_dir.subdir_in_dir("few-shot-generation", return_metadata=True)
+            .subdir_in_dir(dataset_name.canonical(), return_metadata=True)
+            .subdir_in_dir(f"fewgen-generations-{save_type}", return_metadata=True)
+            .subdir_in_dir(model_name.canonical(), return_metadata=True)
+            .subdir_in_dir(f"num_samples_per_label={num_samples_per_label_str}", return_metadata=True)
+            .subdir_in_dir(f"num_shots={num_shots}", return_metadata=True)
+        )
+
+        if save_type == "metrics":
+            return (
+                results_path.subdir_in_dir(f"label={label_text}", return_metadata=True)
+                .subdir_in_dir(
+                    f"metrics_label_distribution={metrics_label_distribution}", return_metadata=True
+                )
+                .subdir_in_dir(
+                    f"metrics_num_samples_per_label={metrics_num_samples_per_label_str}", return_metadata=True
+                )
+                .subdir_in_dir(f"metric_name={metric_name.canonical()}", return_metadata=True)
                 .file_in_dir(
                     f"metric"
                     f"-metrics_label_distribution={metrics_label_distribution}"
@@ -2156,97 +2000,6 @@ class FewGenTextGenMetrics(BaseCalculateTextGenMetrics):
             ## Return a directory to save the text generations
             return results_path.subdir_in_dir(
                 f"fewgen-generations-{save_type}"
-            if icl_template_hash is not None:
-                icl_template_hash: str = icl_template_hash[:6]
-            if prompt_template_hash is not None:
-                prompt_template_hash: str = prompt_template_hash[:6]
-
-        icl_template_hash_str: str = '' if icl_template_hash is None \
-            else f'-icl_template_hash={icl_template_hash}'
-        prompt_template_hash_str: str = '' if prompt_template_hash is None \
-            else f'-prompt_template_hash={prompt_template_hash}'
-
-        label_verbalizer_str: str = ''
-        if label_text == LABEL_OVERALL:
-            if label_verbalizer != dataset_name.label_verbalizer():
-                label_verbalizer_str: str = f'-vbs={StringUtil.hash(label_verbalizer, max_len=4)}'
-        else:
-            assert label_text in label_verbalizer
-            assert label_text in dataset_name.label_verbalizer()
-            if label_verbalizer[label_text] != dataset_name.label_verbalizer()[label_text]:
-                label_verbalizer_str: str = f'-vb={StringUtil.hash(label_verbalizer[label_text], max_len=4)}'
-
-        text_gens_parser_str: str = ''
-        text_gens_parser_body_hash: str = StringUtil.hash(get_fn_spec(text_gens_parser).source_body)
-        if text_gens_parser_body_hash != StringUtil.hash(get_fn_spec(dataset_name.text_gens_parser()).source_body):
-            text_gens_parser_str: str = f'-pr={text_gens_parser_body_hash[:6]}'
-
-        filter_params_str: str = ''
-        if filter_params.filter_type != 'none':
-            filter_str, filter_hash = filter_params.save_key_and_hash(
-                dataset_cartography_student=dataset_cartography_student,
-                dataset_cartography_text_col=dataset_cartography_text_col,
-            )
-            filter_params_str: str = f'-f={filter_hash}'
-
-        top_p_str: str = ''
-        if top_p != DEFAULT_TOP_P:
-            top_p_str = f'-top_p={top_p:.2f}'
-        temperature_str: str = ''
-        if temperature != DEFAULT_TEMPERATURE:
-            temperature_str = f'-temp={temperature}'
-
-        student_hpo_validation_set_str: str = ''
-        if metric_name.is_student_hpo():
-            student_hpo_validation_set_str: str = f'-hpo_set={student_hpo_validation_set}'
-
-        dataset_cartography_str: str = ''
-        if metric_name is MetricName.StudentDatasetCartography:
-            dataset_cartography_str: str = f'-cart={dataset_cartography_student.canonical()}' \
-                                           f'_col={dataset_cartography_text_col}'
-
-        results_path = results_dir.subdir_in_dir('few-shot-generation', return_metadata=True) \
-            .subdir_in_dir(dataset_name.canonical(), return_metadata=True) \
-            .subdir_in_dir(f'fewgen-generations-{save_type}', return_metadata=True) \
-            .subdir_in_dir(model_name.canonical(), return_metadata=True) \
-            .subdir_in_dir(f'num_samples_per_label={num_samples_per_label_str}', return_metadata=True) \
-            .subdir_in_dir(f'num_shots={num_shots}', return_metadata=True)
-
-        if save_type == 'metrics':
-            return results_path.subdir_in_dir(f'label={label_text}', return_metadata=True) \
-                .subdir_in_dir(f'metrics_label_distribution={metrics_label_distribution}', return_metadata=True) \
-                .subdir_in_dir(f'metrics_num_samples_per_label={metrics_num_samples_per_label_str}',
-                               return_metadata=True) \
-                .subdir_in_dir(f'metric_name={metric_name.canonical()}', return_metadata=True) \
-                .file_in_dir(
-                f"metric"
-                f"-metrics_label_distribution={metrics_label_distribution}"
-                f"-metrics_num_samples_per_label={metrics_num_samples_per_label}"
-                f"-metric_name={metric_name.canonical()}"
-                f"-seed_type={seed_type_str}"
-                f"-dataset={dataset_name.canonical()}"
-                f"-model_name={model_name.canonical()}"
-                f"-num_samples_per_label={num_samples_per_label_str}"
-                f"-num_shots={num_shots}"
-                f"-label={label_text}"
-                f"-seed={seed}"
-                f"-fewgen_max_tokens={fewgen_max_tokens}"
-                f"{icl_template_hash_str}"
-                f"{prompt_template_hash_str}"
-                f"{label_verbalizer_str}"
-                f"{student_hpo_validation_set_str}"
-                f"{dataset_cartography_str}"
-                f"{text_gens_parser_str}"
-                f"{filter_params_str}"
-                f"{top_p_str}"
-                f"{temperature_str}"
-                f".pkl",
-                return_metadata=True,
-            ).update_params(file_format=FileFormat.PICKLE)
-        else:
-            ## Return a directory to save the text generations
-            return results_path.subdir_in_dir(
-                f'fewgen-generations-{save_type}'
                 f"-seed_type={seed_type_str}"
                 f"-dataset={dataset_name.canonical()}"
                 f"-model_name={model_name.canonical()}"

@@ -1,14 +1,14 @@
 import gc
 import io
 import math
-from typing import *
+from typing import (
+    Dict,
+    List,
+)
 
 import orjson
 import pandas as pd
-from bs4 import BeautifulSoup as BS
-from fmcore.constants import DataLayout
-from fmcore.data import FileMetadata, Reader, to_sdf
-from fmcore.util import (
+from bears.util import (
     ProgressBar,
     StringUtil,
     Timer,
@@ -22,14 +22,15 @@ from fmcore.util import (
     wait,
     whitespace_normalize,
 )
+from bs4 import BeautifulSoup as BS
+from fmcore.constants import DataLayout
+from fmcore.data import FileMetadata, Reader, to_sdf
 
 CORPUS_DIR: str = ""  # TODO: fill this out! Recommended to use S3.
 
 
 def create_amazon_products():
-    corpus_dir: FileMetadata = FileMetadata.of(
-        f"{CORPUS_DIR}/data/amazon-reviews/2018/meta/"
-    )
+    corpus_dir: FileMetadata = FileMetadata.of(f"{CORPUS_DIR}/data/amazon-reviews/2018/meta/")
     corpus_dir.mkdir()
     if len(corpus_dir.list()) == 0:
         raise SystemError(
@@ -84,16 +85,9 @@ def create_amazon_products():
         return row
 
     def _convert_df(df_part):
-        return (
-            to_sdf(df_part)
-            .to_layout(DataLayout.LIST_OF_DICT)
-            .apply(_convert_row, axis=1)
-            .pandas()
-        )
+        return to_sdf(df_part).to_layout(DataLayout.LIST_OF_DICT).apply(_convert_row, axis=1).pandas()
 
-    corpus_split_dir: FileMetadata = corpus_dir.subdir_in_dir(
-        "split", return_metadata=True
-    )
+    corpus_split_dir: FileMetadata = corpus_dir.subdir_in_dir("split", return_metadata=True)
     futs = []
     for df_part_i, df_part in enumerate(all_dfs):
         df_part = _convert_df(df_part)
@@ -138,9 +132,7 @@ def create_amazon_products():
         )
         prods = prods.drop_duplicates("asin").persist(wait=True)
 
-    corpus_raw_text_dir: FileMetadata = corpus_dir.subdir_in_dir(
-        "raw-text", return_metadata=True
-    )
+    corpus_raw_text_dir: FileMetadata = corpus_dir.subdir_in_dir("raw-text", return_metadata=True)
     with Timer():
 
         def create_product_text(row):
@@ -178,9 +170,7 @@ def create_amazon_products():
             )
             futs.append(run_concurrent(prods_part.to_parquet, fpath))
         wait(futs, progress=True)
-        print(
-            f'Done creating Amazon Products corpus, final data is at: "{corpus_raw_text_dir.path}"'
-        )
+        print(f'Done creating Amazon Products corpus, final data is at: "{corpus_raw_text_dir.path}"')
 
         def amazon_products_count_num_tokens(df_path):
             df_part = Reader.of(
@@ -202,9 +192,7 @@ def create_amazon_products():
             sum_is: int = sum(
                 [
                     len(input_ids)
-                    for input_ids in tokenizer(
-                        ser_part.tolist(), add_special_tokens=False
-                    )["input_ids"]
+                    for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)["input_ids"]
                 ]
             )
             return sum_is
@@ -222,9 +210,7 @@ def create_amazon_products():
             ],
             progress=True,
         )
-        print(
-            f"Amazon Products corpus has {round(sum(counts) / 1e9, 2)} billion tokens"
-        )
+        print(f"Amazon Products corpus has {round(sum(counts) / 1e9, 2)} billion tokens")
 
 
 REALNEWS_REGIONAL_NEWS_DOMAINS: List[str] = [
@@ -406,21 +392,14 @@ def count_num_tokens(ser_part):
 
     tokenizer = AutoTokenizer.from_pretrained("TheBloke/Llama-2-13B-fp16")
     sum_is: int = sum(
-        [
-            len(input_ids)
-            for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)[
-                "input_ids"
-            ]
-        ]
+        [len(input_ids) for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)["input_ids"]]
     )
     return sum_is
 
 
 def write_realnews_partition(rn_data, *, corpus_dir: FileMetadata, rn_name: str):
     with Timer(f"Writing partition {rn_name}"):
-        corpus_partition_dir: FileMetadata = corpus_dir.subdir_in_dir(
-            rn_name, return_metadata=True
-        )
+        corpus_partition_dir: FileMetadata = corpus_dir.subdir_in_dir(rn_name, return_metadata=True)
         print(f"{rn_name} length: {len(rn_data)}")
         futs = []
         for rn_part_i, rn_part in ProgressBar.iter(
@@ -433,9 +412,7 @@ def write_realnews_partition(rn_data, *, corpus_dir: FileMetadata, rn_name: str)
             )
             futs.append(run_concurrent(rn_part.to_parquet, fpath))
         wait(futs, progress=True)
-        print(
-            f'Done creating {rn_name} partition, final data is at: "{corpus_partition_dir.path}"'
-        )
+        print(f'Done creating {rn_name} partition, final data is at: "{corpus_partition_dir.path}"')
 
         counts: pd.Series = rn_data["text"].map_partitions(count_num_tokens).compute()
         print(f"{rn_name} corpus has {round(counts.sum() / 1e9, 2)} billion tokens")
@@ -474,14 +451,10 @@ def create_realnews():
         buf = []
         gc.collect()
 
-    corpus_split_dir: FileMetadata = corpus_dir.subdir_in_dir(
-        "split", return_metadata=True
-    )
+    corpus_split_dir: FileMetadata = corpus_dir.subdir_in_dir("split", return_metadata=True)
     futs = []
     for df_part_i, df_part in enumerate(all_dfs):
-        dest: str = corpus_split_dir.file_in_dir(
-            f"realnews-part-{StringUtil.pad_zeros(df_part_i)}.parquet"
-        )
+        dest: str = corpus_split_dir.file_in_dir(f"realnews-part-{StringUtil.pad_zeros(df_part_i)}.parquet")
         futs.append(
             run_concurrent(
                 df_part.to_parquet,
@@ -516,26 +489,14 @@ def create_realnews():
             read_as=DataLayout.DASK,
         )
 
-    realnews_india = realnews.query(
-        f"domain in {REALNEWS_INDIAN_NEWS_DOMAINS}"
-    ).persist(wait=True)
-    write_realnews_partition(
-        realnews_india, corpus_dir=corpus_dir, rn_name="realnews-india"
-    )
+    realnews_india = realnews.query(f"domain in {REALNEWS_INDIAN_NEWS_DOMAINS}").persist(wait=True)
+    write_realnews_partition(realnews_india, corpus_dir=corpus_dir, rn_name="realnews-india")
 
-    realnews_regional = realnews.query(
-        f"domain in {REALNEWS_REGIONAL_NEWS_DOMAINS}"
-    ).persist(wait=True)
-    write_realnews_partition(
-        realnews_regional, corpus_dir=corpus_dir, rn_name="realnews-regional"
-    )
+    realnews_regional = realnews.query(f"domain in {REALNEWS_REGIONAL_NEWS_DOMAINS}").persist(wait=True)
+    write_realnews_partition(realnews_regional, corpus_dir=corpus_dir, rn_name="realnews-regional")
 
-    realnews_dominant = realnews.query(
-        f"domain not in {REALNEWS_REGIONAL_NEWS_DOMAINS}"
-    ).persist(wait=True)
-    write_realnews_partition(
-        realnews_dominant, corpus_dir=corpus_dir, rn_name="realnews-dominant"
-    )
+    realnews_dominant = realnews.query(f"domain not in {REALNEWS_REGIONAL_NEWS_DOMAINS}").persist(wait=True)
+    write_realnews_partition(realnews_dominant, corpus_dir=corpus_dir, rn_name="realnews-dominant")
 
 
 def create_cmu_movies():
@@ -549,9 +510,9 @@ def create_cmu_movies():
         )
     with Timer("Reading and merging plot_summaries.txt and movie.metadata.tsv"):
         movie_plots: pd.DataFrame = pd.read_csv(
-            corpus_dir.subdir_in_dir(
-                "MovieSummaries", return_metadata=True
-            ).file_in_dir("plot_summaries.txt"),
+            corpus_dir.subdir_in_dir("MovieSummaries", return_metadata=True).file_in_dir(
+                "plot_summaries.txt"
+            ),
             sep="\t",
             header=None,
             names=[
@@ -560,9 +521,9 @@ def create_cmu_movies():
             ],
         )
         movie_meta: pd.DataFrame = pd.read_csv(
-            corpus_dir.subdir_in_dir(
-                "MovieSummaries", return_metadata=True
-            ).file_in_dir("movie.metadata.tsv"),
+            corpus_dir.subdir_in_dir("MovieSummaries", return_metadata=True).file_in_dir(
+                "movie.metadata.tsv"
+            ),
             sep="\t",
             header=None,
             names=[
@@ -582,13 +543,9 @@ def create_cmu_movies():
             .reset_index(drop=True)
             .rename(columns=dict(plot_summary="text", wiki_movie_id="idx"))
         )
-        corpus_raw_text_dir: FileMetadata = corpus_dir.subdir_in_dir(
-            "raw-text", return_metadata=True
-        )
+        corpus_raw_text_dir: FileMetadata = corpus_dir.subdir_in_dir("raw-text", return_metadata=True)
         movies.to_parquet(corpus_raw_text_dir.file_in_dir("cmu-movie-summary.parquet"))
-        print(
-            f'Done creating CMU Moveis corpus, final data is at: "{corpus_raw_text_dir.path}"'
-        )
+        print(f'Done creating CMU Moveis corpus, final data is at: "{corpus_raw_text_dir.path}"')
 
         def cmu_movies_count_num_tokens(df_path):
             df_part = Reader.of(
@@ -605,9 +562,7 @@ def create_cmu_movies():
             sum_is: int = sum(
                 [
                     len(input_ids)
-                    for input_ids in tokenizer(
-                        ser_part.tolist(), add_special_tokens=False
-                    )["input_ids"]
+                    for input_ids in tokenizer(ser_part.tolist(), add_special_tokens=False)["input_ids"]
                 ]
             )
             return sum_is

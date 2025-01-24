@@ -1,5 +1,6 @@
-from typing import *
+from typing import Optional
 
+from fmcore.constants import Status
 from fmcore.framework import Tracker
 
 from synthesizrr.common import (
@@ -12,12 +13,8 @@ from synthesizrr.common import (
 )
 from synthesizrr.driver import run_chain
 
-TRACKER = Tracker.of('log', path='~/synthesizrr_run.log')  ## Execution outputs will get logged to this file.
-TRACKER = Tracker.of(
-    "log", path="~/synthesizrr_run.log"
-)  ## Execution outputs will get logged to this file.
-    "log", path="~/synthesizrr_run.log"
-)  ## Execution outputs will get logged to this file.
+## Execution outputs will get logged to this file:
+TRACKER = Tracker.of("log", path="~/synthesizrr_run.log")
 BACKGROUND: bool = False
 CART_FRAC: Optional[float] = 0.83  ## Make None to Cartography filtering.
 
@@ -59,8 +56,7 @@ if __name__ == "__main__":
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -91,10 +87,8 @@ if __name__ == "__main__":
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
-        "synthesizrr_no_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn"
-        not in globals()
-        or synthesizrr_no_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        "synthesizrr_no_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn" not in globals()
+        or synthesizrr_no_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_hyperpartisan_news_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -171,8 +165,7 @@ Rewritten Article: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_hyperpartisan_news_claude_instant_v1_exn" not in globals()
-        or synthesizrr_retr_icl_hyperpartisan_news_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_hyperpartisan_news_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_hyperpartisan_news_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -203,10 +196,8 @@ Rewritten Article: """.strip()
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
-        "synthesizrr_no_retr_icl_hyperpartisan_news_claude_instant_v1_exn"
-        not in globals()
-        or synthesizrr_no_retr_icl_hyperpartisan_news_claude_instant_v1_exn.status
-        is Status.FAILED
+        "synthesizrr_no_retr_icl_hyperpartisan_news_claude_instant_v1_exn" not in globals()
+        or synthesizrr_no_retr_icl_hyperpartisan_news_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_hyperpartisan_news_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -511,8 +502,7 @@ Summary by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_toi_headlines_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_retr_icl_toi_headlines_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_toi_headlines_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_toi_headlines_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -545,8 +535,7 @@ Summary by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_toi_headlines_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_no_retr_icl_toi_headlines_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_toi_headlines_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_toi_headlines_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -622,8 +611,7 @@ Headline: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_toi_headlines_claude_instant_v1_exn" not in globals()
-        or synthesizrr_no_retr_icl_toi_headlines_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_toi_headlines_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_toi_headlines_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -671,8 +659,7 @@ Headline by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_toi_headlines_claude_instant_v1_exn" not in globals()
-        or synthesizrr_retr_icl_toi_headlines_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_toi_headlines_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_toi_headlines_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -737,37 +724,34 @@ Headline by Assistant: """.strip()
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
-        "synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn"
-        not in globals()
-        or synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        "synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn" not in globals()
+        or synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn.status is Status.FAILED
     ):
-        synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn = (
-            run_chain(
-                results_dir=RESULTS_DIR,
-                expt=Experiment.SynthesizRR,
-                dataset_name=DatasetName.AmazonReviewsProductCategory,
-                model_name=ModelName.LLaMa_2_13B_Chat,
-                num_shots_list=SYNTHESIZRR_NUM_SHOTS_LIST,
-                corpus=Corpus.AmazonProducts,
-                retriever=Retriever.Contriever,
-                num_samples_per_label=1_000,
-                seed_type="train_set",
-                seed_set_stratify_on_ground_truth=False,
-                icl_type="seed",
-                llm_batch_size=1,
-                llm_submission_batch_size=12,
-                llm_num_models=48,
-                llm_num_concurrent_preds=23,
-                metrics_overall_num_samples_per_label=8_000,
-                metrics_max_parallel=3,
-                metrics_label_distribution="train_set",
-                # metrics_to_evaluate=None,
-                icl_and_prompt_template=dict(
-                    icl_template="""
+        synthesizrr_no_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn = run_chain(
+            results_dir=RESULTS_DIR,
+            expt=Experiment.SynthesizRR,
+            dataset_name=DatasetName.AmazonReviewsProductCategory,
+            model_name=ModelName.LLaMa_2_13B_Chat,
+            num_shots_list=SYNTHESIZRR_NUM_SHOTS_LIST,
+            corpus=Corpus.AmazonProducts,
+            retriever=Retriever.Contriever,
+            num_samples_per_label=1_000,
+            seed_type="train_set",
+            seed_set_stratify_on_ground_truth=False,
+            icl_type="seed",
+            llm_batch_size=1,
+            llm_submission_batch_size=12,
+            llm_num_models=48,
+            llm_num_concurrent_preds=23,
+            metrics_overall_num_samples_per_label=8_000,
+            metrics_max_parallel=3,
+            metrics_label_distribution="train_set",
+            # metrics_to_evaluate=None,
+            icl_and_prompt_template=dict(
+                icl_template="""
 Review: {{icl[example_text]}}""".strip()
-                    + " ",
-                    prompt_template="""
+                + " ",
+                prompt_template="""
 {{icl_examples}}
 
 Product details:
@@ -775,23 +759,20 @@ Product details:
 
 Write a product review about the above product which is in the category of {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
 Review: """.strip()
-                    + " ",
-                ),
-                tracker=TRACKER,
-                background=BACKGROUND,
-                verbosity=1,
-                step_wait=5,
-                cart_frac=CART_FRAC,
-                # dry_run=True,
-            )
+                + " ",
+            ),
+            tracker=TRACKER,
+            background=BACKGROUND,
+            verbosity=1,
+            step_wait=5,
+            cart_frac=CART_FRAC,
+            # dry_run=True,
         )
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
-        "synthesizrr_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn"
-        not in globals()
-        or synthesizrr_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        "synthesizrr_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn" not in globals()
+        or synthesizrr_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_reviews_category_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -849,37 +830,34 @@ Review: """.strip()
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
-        "synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn"
-        not in globals()
-        or synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn.status
-        is Status.FAILED
+        "synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn" not in globals()
+        or synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn.status is Status.FAILED
     ):
-        synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn = (
-            run_chain(
-                results_dir=RESULTS_DIR,
-                expt=Experiment.SynthesizRR,
-                dataset_name=DatasetName.AmazonReviewsProductCategory,
-                model_name=ModelName.Claude_Instant_v1,
-                num_shots_list=SYNTHESIZRR_NUM_SHOTS_LIST,
-                corpus=Corpus.AmazonProducts,
-                retriever=Retriever.Contriever,
-                num_samples_per_label=1_000,
-                seed_type="train_set",
-                seed_set_stratify_on_ground_truth=False,
-                icl_type="seed",
-                llm_batch_size=1,
-                llm_submission_batch_size=12,
-                llm_num_models=1,
-                llm_num_concurrent_preds=6,
-                metrics_overall_num_samples_per_label=8_000,
-                metrics_max_parallel=3,
-                metrics_label_distribution="train_set",
-                # metrics_to_evaluate=None,
-                icl_and_prompt_template=dict(
-                    icl_template="""
+        synthesizrr_no_retr_icl_amazon_reviews_category_claude_instant_v1_exn = run_chain(
+            results_dir=RESULTS_DIR,
+            expt=Experiment.SynthesizRR,
+            dataset_name=DatasetName.AmazonReviewsProductCategory,
+            model_name=ModelName.Claude_Instant_v1,
+            num_shots_list=SYNTHESIZRR_NUM_SHOTS_LIST,
+            corpus=Corpus.AmazonProducts,
+            retriever=Retriever.Contriever,
+            num_samples_per_label=1_000,
+            seed_type="train_set",
+            seed_set_stratify_on_ground_truth=False,
+            icl_type="seed",
+            llm_batch_size=1,
+            llm_submission_batch_size=12,
+            llm_num_models=1,
+            llm_num_concurrent_preds=6,
+            metrics_overall_num_samples_per_label=8_000,
+            metrics_max_parallel=3,
+            metrics_label_distribution="train_set",
+            # metrics_to_evaluate=None,
+            icl_and_prompt_template=dict(
+                icl_template="""
 Review by Assistant: {{icl[example_text]}}""".strip()
-                    + " ",
-                    prompt_template="""
+                + " ",
+                prompt_template="""
 Human:
 {{icl_examples}}
 
@@ -888,23 +866,20 @@ Product details:
 
 Write a product review about the above product which is in the category of {label_verbalization}. Include relevant product details which are mentioned above. The review should only be a single short sentence, or a single paragraph of 3 to 4 sentences. Add very minor typos.
 Review by Assistant: """.strip()
-                    + " ",
-                ),
-                tracker=TRACKER,
-                background=BACKGROUND,
-                verbosity=1,
-                step_wait=5,
-                cart_frac=CART_FRAC,
-                # dry_run=True,
-            )
+                + " ",
+            ),
+            tracker=TRACKER,
+            background=BACKGROUND,
+            verbosity=1,
+            step_wait=5,
+            cart_frac=CART_FRAC,
+            # dry_run=True,
         )
 
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
-        "synthesizrr_retr_icl_amazon_reviews_category_claude_instant_v1_exn"
-        not in globals()
-        or synthesizrr_retr_icl_amazon_reviews_category_claude_instant_v1_exn.status
-        is Status.FAILED
+        "synthesizrr_retr_icl_amazon_reviews_category_claude_instant_v1_exn" not in globals()
+        or synthesizrr_retr_icl_amazon_reviews_category_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_reviews_category_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -970,8 +945,7 @@ Review by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_amazon_humor_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_no_retr_icl_amazon_humor_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_amazon_humor_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_amazon_humor_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1018,8 +992,7 @@ Product Question: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_amazon_humor_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_retr_icl_amazon_humor_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_amazon_humor_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_humor_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1078,8 +1051,7 @@ Product Question: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_amazon_humor_claude_instant_v1_exn" not in globals()
-        or synthesizrr_no_retr_icl_amazon_humor_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_amazon_humor_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_amazon_humor_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1127,8 +1099,7 @@ Product Question by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_amazon_humor_claude_instant_v1_exn" not in globals()
-        or synthesizrr_retr_icl_amazon_humor_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_amazon_humor_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_humor_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1195,8 +1166,7 @@ Product Question by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_amazon_polarity_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_no_retr_icl_amazon_polarity_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_amazon_polarity_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_amazon_polarity_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1243,8 +1213,7 @@ Review: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_amazon_polarity_llama_2_13b_chat_exn" not in globals()
-        or synthesizrr_retr_icl_amazon_polarity_llama_2_13b_chat_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_amazon_polarity_llama_2_13b_chat_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_polarity_llama_2_13b_chat_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1303,8 +1272,7 @@ Review: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [32]
     if (
         "synthesizrr_no_retr_icl_amazon_polarity_claude_instant_v1_exn" not in globals()
-        or synthesizrr_no_retr_icl_amazon_polarity_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_no_retr_icl_amazon_polarity_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_no_retr_icl_amazon_polarity_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
@@ -1352,8 +1320,7 @@ Review by Assistant: """.strip()
     SYNTHESIZRR_NUM_SHOTS_LIST = [0, 3]
     if (
         "synthesizrr_retr_icl_amazon_polarity_claude_instant_v1_exn" not in globals()
-        or synthesizrr_retr_icl_amazon_polarity_claude_instant_v1_exn.status
-        is Status.FAILED
+        or synthesizrr_retr_icl_amazon_polarity_claude_instant_v1_exn.status is Status.FAILED
     ):
         synthesizrr_retr_icl_amazon_polarity_claude_instant_v1_exn = run_chain(
             results_dir=RESULTS_DIR,
