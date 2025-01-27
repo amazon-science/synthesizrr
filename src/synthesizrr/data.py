@@ -1,10 +1,31 @@
-from typing import *
+import copy
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Type,
+    Union,
+)
 
+import datasets as ds
+import numpy as np
 import pandas as pd
+from bears import FileMetadata
+from bears.util import (
+    FileSystemUtil,
+    Registry,
+    classproperty,
+    only_item,
+    only_key,
+    safe_validate_arguments,
+    sample_idxs_match_distribution,
+)
 from datasets import load_dataset as hf_load_dataset
+from fmcore.constants import GROUND_TRUTH_ML_TYPES, DataLayout, MLType, MLTypeSchema, Task
 from fmcore.data.writer import Writer
-from fmcore.framework.dl.torch import *
-from fmcore.framework.task_data import Dataset, Datasets, DataSplit
+from fmcore.framework import Dataset, Datasets, DataSplit
 from sklearn.model_selection import train_test_split
 
 DATA_DIR: str = ""  # TODO: fill this out!
@@ -62,13 +83,9 @@ class SynthesizRRDataset(Registry):
 
     @classproperty
     def unsupervised_data_schema(cls) -> MLTypeSchema:
-        data_schema: Dict[str, MLType] = copy.deepcopy(
-            MLType.convert_values(cls.data_schema)
-        )
+        data_schema: Dict[str, MLType] = copy.deepcopy(MLType.convert_values(cls.data_schema))
         data_schema: MLTypeSchema = {
-            col: mltype
-            for col, mltype in data_schema.items()
-            if mltype not in GROUND_TRUTH_ML_TYPES
+            col: mltype for col, mltype in data_schema.items() if mltype not in GROUND_TRUTH_ML_TYPES
         }
         return data_schema
 
@@ -121,59 +138,37 @@ class SynthesizRRDataset(Registry):
                 overwrite=True,
             )
             idx_col: str = only_item(
-                [
-                    col
-                    for col, mltype in cls.supervised_data_schema.items()
-                    if mltype is MLType.INDEX
-                ]
+                [col for col, mltype in cls.supervised_data_schema.items() if mltype is MLType.INDEX]
             )
             train: pd.DataFrame = cls.raw_train()
             if cls.has_decode_labels():
                 train: pd.DataFrame = train.apply(cls.decode_labels, axis=1)
             if len(train) != train[idx_col].nunique():
-                raise ValueError(
-                    f'Expected unique index column "{idx_col}" for split="train".'
-                )
+                raise ValueError(f'Expected unique index column "{idx_col}" for split="train".')
             train.reset_index(drop=True).to_parquet(cls.train_path)
         if cls.has_validation():
             idx_col: str = only_item(
-                [
-                    col
-                    for col, mltype in cls.supervised_data_schema.items()
-                    if mltype is MLType.INDEX
-                ]
+                [col for col, mltype in cls.supervised_data_schema.items() if mltype is MLType.INDEX]
             )
             validation: pd.DataFrame = cls.raw_validation()
             if cls.has_decode_labels():
                 validation: pd.DataFrame = validation.apply(cls.decode_labels, axis=1)
             if len(validation) != validation[idx_col].nunique():
-                raise ValueError(
-                    f'Expected unique index column "{idx_col}" for split="validation".'
-                )
+                raise ValueError(f'Expected unique index column "{idx_col}" for split="validation".')
             validation.reset_index(drop=True).to_parquet(cls.validation_path)
         if cls.has_test():
             idx_col: str = only_item(
-                [
-                    col
-                    for col, mltype in cls.supervised_data_schema.items()
-                    if mltype is MLType.INDEX
-                ]
+                [col for col, mltype in cls.supervised_data_schema.items() if mltype is MLType.INDEX]
             )
             test: pd.DataFrame = cls.raw_test()
             if cls.has_decode_labels():
                 test: pd.DataFrame = test.apply(cls.decode_labels, axis=1)
             if len(test) != test[idx_col].nunique():
-                raise ValueError(
-                    f'Expected unique index column "{idx_col}" for split="test".'
-                )
+                raise ValueError(f'Expected unique index column "{idx_col}" for split="test".')
             test.reset_index(drop=True).to_parquet(cls.test_path)
         if cls.has_unsupervised():
             idx_col: str = only_item(
-                [
-                    col
-                    for col, mltype in cls.unsupervised_data_schema.items()
-                    if mltype is MLType.INDEX
-                ]
+                [col for col, mltype in cls.unsupervised_data_schema.items() if mltype is MLType.INDEX]
             )
             Writer.of("json").write(
                 data=cls.unsupervised_data_schema,
@@ -182,9 +177,7 @@ class SynthesizRRDataset(Registry):
             )
             unsupervised: pd.DataFrame = cls.raw_unsupervised()
             if len(unsupervised) != unsupervised[idx_col].nunique():
-                raise ValueError(
-                    f'Expected unique index column "{idx_col}" for split="unsupervised".'
-                )
+                raise ValueError(f'Expected unique index column "{idx_col}" for split="unsupervised".')
             unsupervised.reset_index(drop=True).to_parquet(cls.unsupervised_path)
 
     @classproperty
@@ -380,10 +373,7 @@ class AGNewsDataset(SynthesizRRDataset):
             ),
         ).to_pandas()
         test_df = (
-            test_df.drop(["id"], axis=1)
-            .reset_index(drop=True)
-            .reset_index()
-            .rename(columns={"index": "id"})
+            test_df.drop(["id"], axis=1).reset_index(drop=True).reset_index().rename(columns={"index": "id"})
         )
         test_df["id"] = "idtest" + test_df["id"].astype(str)
         return test_df
@@ -706,9 +696,7 @@ class AmazonReviewsProductCategory(SynthesizRRDataset):
             "beauty",
             "jewelry_and_watches",
         }
-        reviews = reviews.query(
-            f"product_category in {list(attrprompt_cats)}"
-        ).reset_index(drop=True)
+        reviews = reviews.query(f"product_category in {list(attrprompt_cats)}").reset_index(drop=True)
         assert set(reviews["product_category"]) == attrprompt_cats
         assert reviews["unique_id"].nunique() == len(reviews)
         # reviews['product_category'].value_counts()
@@ -759,27 +747,27 @@ class AmazonHumorousProductQuestions(SynthesizRRDataset):
 
     @classmethod
     def raw_train(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/amazon-humor/amazon-humor_train.parquet"
-        ).rename(columns={"question": "text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_train.parquet").rename(
+            columns={"question": "text"}
+        )
 
     @classmethod
     def raw_validation(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/amazon-humor/amazon-humor_validation.parquet"
-        ).rename(columns={"question": "text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_validation.parquet").rename(
+            columns={"question": "text"}
+        )
 
     @classmethod
     def raw_test(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/amazon-humor/amazon-humor_test.parquet"
-        ).rename(columns={"question": "text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_test.parquet").rename(
+            columns={"question": "text"}
+        )
 
     @staticmethod
     def create_dataset():
-        dataset_dir: FileMetadata = FileMetadata.of(
-            f"{DATA_DIR}/raw-data/amazon-humor/"
-        ).mkdir(return_metadata=True)
+        dataset_dir: FileMetadata = FileMetadata.of(f"{DATA_DIR}/raw-data/amazon-humor/").mkdir(
+            return_metadata=True
+        )
         if len(dataset_dir.list()) == 0:
             raise SystemError(
                 f'Expected Amazon Humor data to be in folder "{dataset_dir.path}". '
@@ -812,9 +800,7 @@ class AmazonHumorousProductQuestions(SynthesizRRDataset):
             }
         )
 
-        humor_pos_train = humor_pos.sample(n=15_000 // 2, random_state=42).reset_index(
-            drop=True
-        )
+        humor_pos_train = humor_pos.sample(n=15_000 // 2, random_state=42).reset_index(drop=True)
         # print(f'humor_pos_train: {len(humor_pos_train)}')
 
         humor_pos_validation = (
@@ -829,9 +815,7 @@ class AmazonHumorousProductQuestions(SynthesizRRDataset):
         ).reset_index(drop=True)
         # print(f'humor_pos_test: {len(humor_pos_test)}')
 
-        humor_neg_train = humor_neg.sample(n=15_000 // 2, random_state=42).reset_index(
-            drop=True
-        )
+        humor_neg_train = humor_neg.sample(n=15_000 // 2, random_state=42).reset_index(drop=True)
         # print(f'humor_neg_train: {len(humor_neg_train)}')
 
         humor_neg_validation = (
@@ -863,31 +847,19 @@ class AmazonHumorousProductQuestions(SynthesizRRDataset):
         # display(humor_validation.head(3))
 
         humor_test = (
-            pd.concat([humor_pos_test, humor_neg_test])
-            .sample(frac=1, random_state=42)
-            .reset_index(drop=True)
+            pd.concat([humor_pos_test, humor_neg_test]).sample(frac=1, random_state=42).reset_index(drop=True)
         )
         # print(f'humor_test: {len(humor_test)}')
         # display(humor_test.head(3))
-        humor_train["idx"] = (
-            humor_train["idx"].astype(str) + "-" + humor_train["label_text"].astype(str)
-        )
+        humor_train["idx"] = humor_train["idx"].astype(str) + "-" + humor_train["label_text"].astype(str)
         humor_validation["idx"] = (
-            humor_validation["idx"].astype(str)
-            + "-"
-            + humor_validation["label_text"].astype(str)
+            humor_validation["idx"].astype(str) + "-" + humor_validation["label_text"].astype(str)
         )
-        humor_test["idx"] = (
-            humor_test["idx"].astype(str) + "-" + humor_test["label_text"].astype(str)
-        )
+        humor_test["idx"] = humor_test["idx"].astype(str) + "-" + humor_test["label_text"].astype(str)
 
         FileMetadata.of(f"{DATA_DIR}/data/amazon-humor/").mkdir()
-        humor_train.to_parquet(
-            f"{DATA_DIR}/data/amazon-humor/amazon-humor_train.parquet"
-        )
-        humor_validation.to_parquet(
-            f"{DATA_DIR}/data/amazon-humor/amazon-humor_validation.parquet"
-        )
+        humor_train.to_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_train.parquet")
+        humor_validation.to_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_validation.parquet")
         humor_test.to_parquet(f"{DATA_DIR}/data/amazon-humor/amazon-humor_test.parquet")
 
 
@@ -905,21 +877,21 @@ class ToiHeadlinesDataset(SynthesizRRDataset):
 
     @classmethod
     def raw_train(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/toi_headlines/toi_headlines_train.parquet"
-        ).rename(columns={"headline_text": "text", "headline_root": "label_text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_train.parquet").rename(
+            columns={"headline_text": "text", "headline_root": "label_text"}
+        )
 
     @classmethod
     def raw_validation(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/toi_headlines/toi_headlines_validation.parquet"
-        ).rename(columns={"headline_text": "text", "headline_root": "label_text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_validation.parquet").rename(
+            columns={"headline_text": "text", "headline_root": "label_text"}
+        )
 
     @classmethod
     def raw_test(cls) -> Optional[pd.DataFrame]:
-        return pd.read_parquet(
-            f"{DATA_DIR}/data/toi_headlines/toi_headlines_test.parquet"
-        ).rename(columns={"headline_text": "text", "headline_root": "label_text"})
+        return pd.read_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_test.parquet").rename(
+            columns={"headline_text": "text", "headline_root": "label_text"}
+        )
 
     @classproperty
     def label_verbalizer(cls) -> Optional[Dict[str, str]]:
@@ -939,9 +911,9 @@ class ToiHeadlinesDataset(SynthesizRRDataset):
             "elections",
             "world",
         ]
-        dataset_dir: FileMetadata = FileMetadata.of(
-            f"{DATA_DIR}/raw-data/toi_headlines/"
-        ).mkdir(return_metadata=True)
+        dataset_dir: FileMetadata = FileMetadata.of(f"{DATA_DIR}/raw-data/toi_headlines/").mkdir(
+            return_metadata=True
+        )
         if len(dataset_dir.list()) == 0:
             raise SystemError(
                 f'Expected ToI Headlines data to be in folder "{dataset_dir.path}". '
@@ -974,9 +946,7 @@ class ToiHeadlinesDataset(SynthesizRRDataset):
                 seed=42,
             )
         ].reset_index(drop=True)
-        remaining_wo_train = full.query(
-            f"idx not in {train['idx'].tolist()}"
-        ).reset_index(drop=True)
+        remaining_wo_train = full.query(f"idx not in {train['idx'].tolist()}").reset_index(drop=True)
         test = remaining_wo_train.loc[
             sample_idxs_match_distribution(
                 remaining_wo_train["headline_root"],
@@ -985,9 +955,9 @@ class ToiHeadlinesDataset(SynthesizRRDataset):
                 seed=42,
             )
         ].reset_index(drop=True)
-        validation = full.query(
-            f"idx not in {train['idx'].tolist() + test['idx'].tolist()}"
-        ).reset_index(drop=True)
+        validation = full.query(f"idx not in {train['idx'].tolist() + test['idx'].tolist()}").reset_index(
+            drop=True
+        )
         train["idx"] = train["idx"].apply(lambda x: f"train-{x}")
         test["idx"] = test["idx"].apply(lambda x: f"test-{x}")
         validation["idx"] = validation["idx"].apply(lambda x: f"validation-{x}")
@@ -996,9 +966,7 @@ class ToiHeadlinesDataset(SynthesizRRDataset):
         print(test["headline_root"].value_counts())
         FileMetadata.of(f"{DATA_DIR}/data/toi_headlines/").mkdir()
         train.to_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_train.parquet")
-        validation.to_parquet(
-            f"{DATA_DIR}/data/toi_headlines/toi_headlines_validation.parquet"
-        )
+        validation.to_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_validation.parquet")
         test.to_parquet(f"{DATA_DIR}/data/toi_headlines/toi_headlines_test.parquet")
 
 

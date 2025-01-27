@@ -1,123 +1,93 @@
 import gc
-from abc import ABC
+import math
 import time
-import gc
-from fmcore.constants import (
-    FileFormat,
-    DataLayout,
-    MLType,
-    DataSplit,
-    Task,
-    Storage,
-    Parallelize,
-)
-from fmcore.util import (
-    Registry,
-    MutableParameters,
-    Parameters,
-    set_param_from_alias,
-    is_list_like,
-    as_list,
-    random_sample,
-    safe_validate_arguments,
-    get_default,
+from abc import ABC
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+
+import pandas as pd
+from bears.util import (
     StringUtil,
-    MLTypeSchema,
-    AutoEnum,
-    auto,
-    alias,
     Timer,
-    not_impl,
-    check_isinstance,
-    keep_keys,
-    keep_values,
-    FileSystemUtil,
-    type_str,
-    parameterized_flatten,
-    punct_normalize,
     accumulate_iter,
-    any_item,
-    ProgressBar,
-    remove_nulls,
+    check_isinstance,
+    get_default,
+    is_list_like,
+    keep_values,
+    not_impl,
     only_item,
+    safe_validate_arguments,
+    type_str,
 )
-from fmcore.util.concurrency import (
-    run_asyncio,
-    run_concurrent,
-    run_parallel,
-    run_parallel_ray,
-    wait,
-    wait_if_future,
-    accumulate,
-    get_result,
-    ThreadPoolExecutor,
-    stop_executor,
+from bears.util.aws import S3Util
+from bears.util.concurrency import (
     Future,
-    dispatch_executor,
+    ThreadPoolExecutor,
+    accumulate,
     dispatch,
+    dispatch_executor,
+    run_concurrent,
+    stop_executor,
+)
+from fmcore.constants import (
+    DataLayout,
+    DataSplit,
+    FileFormat,
+    MLType,
+    Parallelize,
+    Task,
 )
 from fmcore.data import (
     FileMetadata,
-    ScalableDataFrame,
-    ScalableSeries,
     Reader,
-    ScalableDataFrameOrRaw,
+    ScalableDataFrame,
     to_sdf,
 )
-from fmcore.framework.task_data import Dataset, Datasets, save_dataset, load_dataset
-from fmcore.framework.predictions import Predictions, save_predictions, load_predictions
-from fmcore.framework.task import Prompts, NextTokens
-from fmcore.util.aws import S3Util
-from fmcore.framework import Algorithm
-from fmcore.framework.task.classification import ClassificationData
-from fmcore.framework.task.embedding import EmbeddingData, Embeddings
-from fmcore.framework.task.retrieval import Queries, RankedResults, RetrievalCorpus
-from fmcore.framework.task.text_generation import (
-    TextInputs,
-    NextTokens,
-    TextGenerations,
-    FewShotTextGenerator,
-    TextGenerationsPredictionsBase,
+from fmcore.framework._chain.Chain import ChainExecution
+from fmcore.framework._dataset import Dataset, load_dataset, save_dataset
+from fmcore.framework._evaluator import Evaluator, LoadBalancingStrategy
+from fmcore.framework._predictions import Predictions, load_predictions, save_predictions
+from fmcore.framework._task.classification import ClassificationData
+from fmcore.framework._task.embedding import EmbeddingData
+from fmcore.framework._task.retrieval import Queries, RankedResults, RetrievalCorpus
+from fmcore.framework._task.text_generation import (
     GENERATED_TEXTS_COL,
+    FewShotTextGenerator,
+    TextGenerations,
+    TextGenerationsPredictionsBase,
+    TextInputs,
 )
 from fmcore.metric.text_generation_metrics import _text_gens_to_clf_dataset
-from fmcore.framework.evaluator import Evaluator, LoadBalancingStrategy
-from fmcore.framework.chain.Chain import Step, Chain, ChainExecution
-from functools import partial
-from pydantic import root_validator, Extra, conint, confloat, constr
-from pydantic.typing import Literal
+from pydantic import confloat, conint, constr
 
-from synthesizrr.data import SynthesizRRDataset
 from synthesizrr.common import (
-    CachedResultsStep,
-    IDX_COL,
-    LABEL_TEXT_COL,
-    LABEL_VERBALIZATION_COL,
-    EXAMPLE_TEXT_COL,
-    QUERY_TEXT_COL,
-    RETRIEVED_TOP_K_COL,
-    RETRIEVED_CONTEXT_COL,
+    DEFAULT_SEED,
+    DEFAULT_SEED_SET_DATA_SPLIT,
+    DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_P,
     DISTANCE_COL,
     DISTANCE_METRIC_COL,
     EFS_HUGGINGFACE_CACHE_DIR,
-    DEFAULT_SEED_SET_DATA_SPLIT,
-    DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH,
-    DEFAULT_SEED,
-    Experiment,
-    expand_num_samples_per_label,
-    DatasetName,
+    EXAMPLE_TEXT_COL,
+    IDX_COL,
+    LABEL_TEXT_COL,
+    LABEL_VERBALIZATION_COL,
+    QUERY_TEXT_COL,
+    RETRIEVED_CONTEXT_COL,
+    RETRIEVED_TOP_K_COL,
+    CachedResultsStep,
     Corpus,
+    DatasetName,
+    Experiment,
+    MetricName,
     ModelName,
     Retriever,
-    count_num_tokens,
-    shorten,
-    get_templates_and_hashes,
     calc_label_dist,
-    DEFAULT_TOP_P,
-    DEFAULT_TEMPERATURE,
-    MetricName,
+    expand_num_samples_per_label,
+    get_templates_and_hashes,
+    shorten,
 )
-from transformers import TemperatureLogitsWarper, TopPLogitsWarper
+from synthesizrr.data import SynthesizRRDataset
 
 
 class EmbedCorpus(CachedResultsStep):
@@ -135,17 +105,11 @@ class EmbedCorpus(CachedResultsStep):
         **kwargs,
     ) -> Dict:
         if corpus_raw_text_dir.data_schema is None:
-            raise ValueError(
-                f"Expected `corpus_raw_text_dir` to have schema, found None."
-            )
+            raise ValueError("Expected `corpus_raw_text_dir` to have schema, found None.")
         if len(keep_values(corpus_raw_text_dir.data_schema, MLType.TEXT)) != 1:
-            raise ValueError(
-                f"Expected `corpus_raw_text_dir` to have exactly one text column; found "
-            )
+            raise ValueError("Expected `corpus_raw_text_dir` to have exactly one text column; found ")
         if corpus_raw_text_dir.format is None:
-            raise ValueError(
-                f"Expected `corpus_raw_text_dir` to have file format, found None."
-            )
+            raise ValueError("Expected `corpus_raw_text_dir` to have file format, found None.")
 
         # input_schema = {
         #     'uid': 'index',
@@ -183,9 +147,7 @@ class EmbedCorpus(CachedResultsStep):
                 retriever=retriever,
             )
             if len(corpus_embeddings_dir.list()) == 0:
-                self.info(
-                    f'Embeddings dir "{corpus_embeddings_dir.path}" is empty, running the embedder...'
-                )
+                self.info(f'Embeddings dir "{corpus_embeddings_dir.path}" is empty, running the embedder...')
                 try:
                     with Timer(
                         f'Reading embedding input data from "{corpus_raw_text_dir.path}"',
@@ -376,9 +338,7 @@ class CreateSeedSet(CachedResultsStep):
                 seed=seed,
             )
             if not seed_set_file.exists():
-                self.info(
-                    f'Seed set does not exist at "{seed_set_file.path}", creating it...'
-                )
+                self.info(f'Seed set does not exist at "{seed_set_file.path}", creating it...')
                 seed_set: ClassificationData = dataset_name.create_seed_set(
                     seed_size=seed_size,
                     data_split=seed_set_data_split,
@@ -394,14 +354,10 @@ class CreateSeedSet(CachedResultsStep):
                     overwrite=True,
                 )
                 self.info(f'...done creating seed set at "{seed_set_file.path}".')
-            seed_set: ClassificationData = load_dataset(
-                seed_set_file, retry=10, retry_wait=10
-            )
+            seed_set: ClassificationData = load_dataset(seed_set_file, retry=10, retry_wait=10)
         elif seed_type == "generated":
             if seed_generation_params is None:
-                raise ValueError(
-                    f'Must pass `seed_generation_params` when passing `seed_type` == "generated"'
-                )
+                raise ValueError('Must pass `seed_generation_params` when passing `seed_type` == "generated"')
             if not isinstance(seed_generation_params, dict):
                 raise ValueError(
                     f"Must pass `seed_generation_params` as a dict; found {type_str(seed_generation_params)}"
@@ -409,22 +365,18 @@ class CreateSeedSet(CachedResultsStep):
             ## TODO: figure out a better way to do this.
             from synthesizrr.main import run_chain
 
-            num_shots_list: Optional[List[int]] = seed_generation_params.get(
-                "num_shots_list"
-            )
+            num_shots_list: Optional[List[int]] = seed_generation_params.get("num_shots_list")
             if not is_list_like(num_shots_list) or len(num_shots_list) != 1:
                 raise ValueError(
                     f"Expected `num_shots_list` to be a list of exactly one element; found: {num_shots_list}"
                 )
             num_shots: int = only_item(num_shots_list)
-            self.info(f"Running seed set generation...")
+            self.info("Running seed set generation...")
             seed_generation_exn: ChainExecution = run_chain(
                 **{
                     **seed_generation_params,
                     **dict(
-                        results_dir=results_dir.subdir_in_dir(
-                            "generated-seed-set", return_metadata=True
-                        ),
+                        results_dir=results_dir.subdir_in_dir("generated-seed-set", return_metadata=True),
                         metrics_to_evaluate=(MetricName.SaveFilteredDataset,),
                         background=False,
                         notifier=None,
@@ -440,11 +392,9 @@ class CreateSeedSet(CachedResultsStep):
             )
             if seed_generation_exn.failed():
                 raise seed_generation_exn.error
-            seed_set_text_gens: TextGenerationsPredictionsBase = (
-                seed_generation_exn.outputs["text_gens_expanded_metrics"][num_shots][
-                    "Overall"
-                ][MetricName.SaveFilteredDataset].value
-            )
+            seed_set_text_gens: TextGenerationsPredictionsBase = seed_generation_exn.outputs[
+                "text_gens_expanded_metrics"
+            ][num_shots]["Overall"][MetricName.SaveFilteredDataset].value
             seed_set: ClassificationData = _text_gens_to_clf_dataset(
                 seed_set_text_gens,
                 data_split=DataSplit.TRAIN,
@@ -477,9 +427,9 @@ class CreateSeedSet(CachedResultsStep):
             )
         else:
             raise not_impl("seed_type", seed_type)
-        self.info(f"Seed set details:")
+        self.info("Seed set details:")
         self.info(seed_set)
-        self.info(f"Seed set label distribution:")
+        self.info("Seed set label distribution:")
         self.info(calc_label_dist(seed_set.data.pandas(), label_col=label_col))
 
         return dict(
@@ -508,11 +458,7 @@ class CreateSeedSet(CachedResultsStep):
             seed_type_str: str = f"{seed_set_data_split.lower()}_set_seed_set"
         else:
             raise not_impl("seed_type", seed_type)
-        stratified_str: str = (
-            "gt_stratified"
-            if seed_set_stratify_on_ground_truth
-            else "not_gt_stratified"
-        )
+        stratified_str: str = "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
 
         return (
             results_dir.subdir_in_dir("seed-set", return_metadata=True)
@@ -559,15 +505,9 @@ class RetrieveFromSeedSet(CachedResultsStep):
     ) -> Dict:
         query_col: str = get_default(query_col, dataset_name.query_col())
         label_col: str = get_default(label_col, dataset_name.label_col())
-        retriever_num_shards: int = get_default(
-            retriever_num_shards, corpus.num_shards()
-        )
-        retriever_batch_size: int = get_default(
-            retriever_batch_size, retriever.batch_size()
-        )
-        retriever_shard_num_cpus: int = get_default(
-            retriever_shard_num_cpus, corpus.shard_num_cpus()
-        )
+        retriever_num_shards: int = get_default(retriever_num_shards, corpus.num_shards())
+        retriever_batch_size: int = get_default(retriever_batch_size, retriever.batch_size())
+        retriever_shard_num_cpus: int = get_default(retriever_shard_num_cpus, corpus.shard_num_cpus())
         retr_input: Queries = Dataset.of(
             task=Task.RETRIEVAL,
             split=DataSplit.UNSUPERVISED,
@@ -593,9 +533,7 @@ class RetrieveFromSeedSet(CachedResultsStep):
         )
         if not retr_output_path.exists():
             ## Run the retriever.
-            self.info(
-                f'Retrieved results do not exist at "{retr_output_path.path}", running retriever...'
-            )
+            self.info(f'Retrieved results do not exist at "{retr_output_path.path}", running retriever...')
 
             retr_evaluator: Evaluator = self._create_retriever(
                 corpus_raw_text_dir=corpus_raw_text_dir,
@@ -622,27 +560,19 @@ class RetrieveFromSeedSet(CachedResultsStep):
                     retrieve_documents=True,
                     load_balancing_strategy=LoadBalancingStrategy.ROUND_ROBIN,
                 )
-                self.info(
-                    f'Saving {len(retr_output)} retrieved results to: "{retr_output_path.path}"...'
-                )
+                self.info(f'Saving {len(retr_output)} retrieved results to: "{retr_output_path.path}"...')
                 save_predictions(
                     retr_output,
                     predictions_destination=retr_output_path,
                 )
-                self.info(
-                    f'...saved {len(retr_output)} retrieved results to: "{retr_output_path.path}".'
-                )
+                self.info(f'...saved {len(retr_output)} retrieved results to: "{retr_output_path.path}".')
             finally:
                 retr_evaluator.stop()
                 del retr_evaluator
 
         ## Even if it was saved immediately before, re-load it:
-        self.info(
-            f'Loading top_k={retrieval_top_k} retrieved results from: "{retr_output_path.path}"'
-        )
-        retr_output: RankedResults = load_predictions(
-            retr_output_path, retry=10, retry_wait=10
-        )
+        self.info(f'Loading top_k={retrieval_top_k} retrieved results from: "{retr_output_path.path}"')
+        retr_output: RankedResults = load_predictions(retr_output_path, retry=10, retry_wait=10)
         retr_output: RankedResults = retr_output.flatten()
 
         self.info(f"\nRetrieved results (top_k={retrieval_top_k}):")
@@ -682,21 +612,14 @@ class RetrieveFromSeedSet(CachedResultsStep):
         if seed_size != dataset_name.seed_size():
             seed_size_str: str = f"-seed_size={seed_size}"
         stratified_str = ""
-        if (
-            seed_set_stratify_on_ground_truth
-            != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH
-        ):
+        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
             stratified_str: str = (
-                "gt_stratified"
-                if seed_set_stratify_on_ground_truth
-                else "not_gt_stratified"
+                "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
             )
             stratified_str: str = f"-stratified={stratified_str}"
 
         return (
-            results_dir.subdir_in_dir(
-                "retrieval-augmented-dataset-generation", return_metadata=True
-            )
+            results_dir.subdir_in_dir("retrieval-augmented-dataset-generation", return_metadata=True)
             .subdir_in_dir(dataset_name.canonical(), return_metadata=True)
             .subdir_in_dir("retrieval-data", return_metadata=True)
             .subdir_in_dir(corpus.canonical(), return_metadata=True)
@@ -888,9 +811,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
         verbosity: int,
     ) -> Tuple[ClassificationData, TextInputs]:
         num_labels: int = len(label_verbalizer)
-        label_seed_set: ClassificationData = seed_set.filter(
-            lambda row: row[label_col] == label_text
-        )
+        label_seed_set: ClassificationData = seed_set.filter(lambda row: row[label_col] == label_text)
         labelwise_icl_dataset: List[Dict] = []
         tokenizer: Any = model_name.tokenizer()
         for idx, ex in enumerate(label_seed_set.data.to_list_of_dict()):
@@ -902,17 +823,11 @@ class CreateInputDatasets(CachedResultsStep, ABC):
             )
             d[LABEL_TEXT_COL] = label_text
             d[LABEL_VERBALIZATION_COL] = label_verbalizer[label_text]
-            d[IDX_COL] = (
-                f"ex={idx}"
-                f"-model_name={model_name.canonical()}"
-                f"-label={d[LABEL_TEXT_COL]}"
-            )
+            d[IDX_COL] = f"ex={idx}-model_name={model_name.canonical()}-label={d[LABEL_TEXT_COL]}"
             labelwise_icl_dataset.append(d)
 
         labelwise_icl_dataset: ClassificationData = Dataset.of(
-            task=Task.MULTI_CLASS_CLASSIFICATION
-            if num_labels >= 3
-            else Task.BINARY_CLASSIFICATION,
+            task=Task.MULTI_CLASS_CLASSIFICATION if num_labels >= 3 else Task.BINARY_CLASSIFICATION,
             split=seed_set_data_split,
             data=to_sdf(labelwise_icl_dataset).pandas(),
             data_schema={
@@ -933,11 +848,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
             d: Dict = dict()
             d[LABEL_TEXT_COL] = label_text
             d[LABEL_VERBALIZATION_COL] = label_verbalizer[label_text]
-            d[IDX_COL] = (
-                f"ex={idx}"
-                f"-model_name={model_name.canonical()}"
-                f"-label={d[LABEL_TEXT_COL]}"
-            )
+            d[IDX_COL] = f"ex={idx}-model_name={model_name.canonical()}-label={d[LABEL_TEXT_COL]}"
             labelwise_fewgen_dataset.append(d)
 
         labelwise_fewgen_dataset: TextInputs = Dataset.of(
@@ -1041,9 +952,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
                     parallelize=Parallelize.processes,
                     executor=executor,
                 )
-                for idx, ex in enumerate(
-                    label_seed_set_retr_output.data.to_list_of_dict()
-                )
+                for idx, ex in enumerate(label_seed_set_retr_output.data.to_list_of_dict())
             ]
             for (
                 ex_labelwise_icl_dataset_df,
@@ -1059,16 +968,12 @@ class CreateInputDatasets(CachedResultsStep, ABC):
                 else False,
             ):
                 labelwise_icl_dataset.append(ex_labelwise_icl_dataset_df)
-                labelwise_synthesizrr_dataset.append(
-                    ex_labelwise_synthesizrr_dataset_df
-                )
+                labelwise_synthesizrr_dataset.append(ex_labelwise_synthesizrr_dataset_df)
         finally:
             stop_executor(executor)
 
         labelwise_icl_dataset: ClassificationData = Dataset.of(
-            task=Task.MULTI_CLASS_CLASSIFICATION
-            if num_labels >= 3
-            else Task.BINARY_CLASSIFICATION,
+            task=Task.MULTI_CLASS_CLASSIFICATION if num_labels >= 3 else Task.BINARY_CLASSIFICATION,
             split=seed_set_data_split,
             data=ScalableDataFrame.concat(labelwise_icl_dataset).pandas(),
             data_schema={
@@ -1103,11 +1008,9 @@ class CreateInputDatasets(CachedResultsStep, ABC):
         )
         if num_samples_per_label is not None:
             ## Only subsample the rewriting dataset, not the ICL dataset.
-            labelwise_synthesizrr_dataset: TextInputs = (
-                labelwise_synthesizrr_dataset.sample(
-                    n=num_samples_per_label,
-                    seed=seed,
-                )
+            labelwise_synthesizrr_dataset: TextInputs = labelwise_synthesizrr_dataset.sample(
+                n=num_samples_per_label,
+                seed=seed,
             )
         save_dataset(
             dataset=labelwise_icl_dataset,
@@ -1153,18 +1056,12 @@ class CreateInputDatasets(CachedResultsStep, ABC):
         retr_icl_min_tokens, retr_icl_max_tokens = retr_icl_token_range
         retr_icl_top_ks: List[int] = sorted(retr_icl_top_ks)
         top_ks: List[int] = sorted(
-            set(
-                retr_icl_top_ks
-                + [max(retr_icl_top_ks) + 1]
-                + list(synthesizrr_top_k_range)
-            )
+            set(retr_icl_top_ks + [max(retr_icl_top_ks) + 1] + list(synthesizrr_top_k_range))
         )
 
         context_top_k_col: Callable = lambda top_k: f"top_{top_k}_{context_col}"
         distance_top_k_col: Callable = lambda top_k: f"top_{top_k}_{DISTANCE_COL}"
-        distance_metric_top_k_col: Callable = (
-            lambda top_k: f"top_{top_k}_{DISTANCE_METRIC_COL}"
-        )
+        distance_metric_top_k_col: Callable = lambda top_k: f"top_{top_k}_{DISTANCE_METRIC_COL}"
 
         tokenizer: Any = model_name.tokenizer()
         assert ex[label_col] == label_text
@@ -1265,9 +1162,7 @@ class CreateInputDatasets(CachedResultsStep, ABC):
         # print(f"\nRetrieved Article [Top-K={top_k}]:\n{shorten(ex[f'top_{top_k}_article_text'], max_tokens=1800)}")
         # if top_k > 20:  ## Keep the top-100 retrieved articles only.
         #     continue
-        return pd.DataFrame(ex_labelwise_icl_dataset), pd.DataFrame(
-            ex_labelwise_synthesizrr_dataset
-        )
+        return pd.DataFrame(ex_labelwise_icl_dataset), pd.DataFrame(ex_labelwise_synthesizrr_dataset)
 
 
 class CreateFewGenDatasets(CreateInputDatasets):
@@ -1300,41 +1195,31 @@ class CreateFewGenDatasets(CreateInputDatasets):
             label_verbalizer=label_verbalizer,
         )
 
-        self.info(
-            f'\nCreating ICL dataset and FewGen dataset for "{dataset_name.canonical()}"...'
-        )
-        executor = dispatch_executor(
-            parallelize=Parallelize.sync, max_workers=len(label_verbalizer)
-        )
+        self.info(f'\nCreating ICL dataset and FewGen dataset for "{dataset_name.canonical()}"...')
+        executor = dispatch_executor(parallelize=Parallelize.sync, max_workers=len(label_verbalizer))
         try:
             icl_dataset_files: Dict[str, FileMetadata] = {}
             fewgen_dataset_files: Dict[str, FileMetadata] = {}
             futs: Dict[str, Future] = {}
             for label_text, label_verbalization in label_verbalizer.items():
                 self.info(f'\nRunning for label="{label_text}"')
-                labelwise_icl_dataset_file, labelwise_fewgen_dataset_file = (
-                    self.save_to(
-                        results_dir=results_dir,
-                        dataset_name=dataset_name,
-                        model_name=model_name,
-                        seed_type=seed_type,
-                        seed_size=seed_size,
-                        seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
-                        seed_generation_params_hash=seed_generation_params_hash,
-                        label_text=label_text,
-                        num_samples_per_label=num_samples_per_label[label_text],
-                        seed_set_data_split=seed_set_data_split,
-                        fewgen_max_tokens=fewgen_max_tokens,
-                        seed=seed,
-                    )
+                labelwise_icl_dataset_file, labelwise_fewgen_dataset_file = self.save_to(
+                    results_dir=results_dir,
+                    dataset_name=dataset_name,
+                    model_name=model_name,
+                    seed_type=seed_type,
+                    seed_size=seed_size,
+                    seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
+                    label_text=label_text,
+                    num_samples_per_label=num_samples_per_label[label_text],
+                    seed_set_data_split=seed_set_data_split,
+                    fewgen_max_tokens=fewgen_max_tokens,
+                    seed=seed,
                 )
                 icl_dataset_files[label_text]: FileMetadata = labelwise_icl_dataset_file
-                fewgen_dataset_files[
-                    label_text
-                ]: FileMetadata = labelwise_fewgen_dataset_file
-                if (not labelwise_icl_dataset_file.exists()) or (
-                    not labelwise_fewgen_dataset_file.exists()
-                ):
+                fewgen_dataset_files[label_text]: FileMetadata = labelwise_fewgen_dataset_file
+                if (not labelwise_icl_dataset_file.exists()) or (not labelwise_fewgen_dataset_file.exists()):
                     futs[label_text] = dispatch(
                         self._save_labelwise_seed_icl_and_text_inputs,
                         seed_set=seed_set,
@@ -1365,32 +1250,20 @@ class CreateFewGenDatasets(CreateInputDatasets):
             icl_dataset: List[ClassificationData] = []
             fewgen_dataset: List[TextInputs] = []
             for label_text, label_verbalization in label_verbalizer.items():
-                icl_dataset.append(
-                    load_dataset(icl_dataset_files[label_text], retry=10, retry_wait=10)
-                )
+                icl_dataset.append(load_dataset(icl_dataset_files[label_text], retry=10, retry_wait=10))
                 self.info(
                     f">> Loaded {len(icl_dataset[-1])} ICL examples "
                     f'from "{icl_dataset_files[label_text].path}"'
                 )
-                fewgen_dataset.append(
-                    load_dataset(
-                        fewgen_dataset_files[label_text], retry=10, retry_wait=10
-                    )
-                )
+                fewgen_dataset.append(load_dataset(fewgen_dataset_files[label_text], retry=10, retry_wait=10))
                 self.info(
                     f">> Loaded {len(fewgen_dataset[-1])} FewGen examples "
                     f'from "{fewgen_dataset_files[label_text].path}"'
                 )
-            self.info(
-                f'...done creating ICL dataset and FewGen dataset for "{dataset_name.canonical()}".'
-            )
-            icl_dataset: ClassificationData = Dataset.concat(icl_dataset).to_layout(
-                DataLayout.PANDAS
-            )
+            self.info(f'...done creating ICL dataset and FewGen dataset for "{dataset_name.canonical()}".')
+            icl_dataset: ClassificationData = Dataset.concat(icl_dataset).to_layout(DataLayout.PANDAS)
             icl_dataset.data = icl_dataset.data.reset_index(drop=True)
-            fewgen_dataset: TextInputs = Dataset.concat(fewgen_dataset).to_layout(
-                DataLayout.PANDAS
-            )
+            fewgen_dataset: TextInputs = Dataset.concat(fewgen_dataset).to_layout(DataLayout.PANDAS)
             fewgen_dataset.data = fewgen_dataset.data.reset_index(drop=True)
             return dict(
                 icl_dataset=icl_dataset,
@@ -1429,14 +1302,9 @@ class CreateFewGenDatasets(CreateInputDatasets):
         if seed_size != dataset_name.seed_size():
             seed_size_str: str = f"-seed_size={seed_size}"
         stratified_str = ""
-        if (
-            seed_set_stratify_on_ground_truth
-            != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH
-        ):
+        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
             stratified_str: str = (
-                "gt_stratified"
-                if seed_set_stratify_on_ground_truth
-                else "not_gt_stratified"
+                "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
             )
             stratified_str: str = f"-stratified={stratified_str}"
 
@@ -1499,9 +1367,7 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
         synthesizrr_distance_range: Tuple[float, float],  ## (0.4, 0.9)
         synthesizrr_max_tokens: conint(ge=1),
         seed_set_data_split: DataSplit = DEFAULT_SEED_SET_DATA_SPLIT,
-        num_samples_per_label: Optional[
-            Union[Dict[str, conint(ge=1)], conint(ge=1)]
-        ] = None,
+        num_samples_per_label: Optional[Union[Dict[str, conint(ge=1)], conint(ge=1)]] = None,
         seed: int = DEFAULT_SEED,
         text_col: Optional[str] = None,
         query_col: Optional[str] = None,
@@ -1522,90 +1388,74 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
         )
 
         seed_set_retr_input: Queries = seed_set_retr_input.to_layout(DataLayout.PANDAS)
-        seed_set_retr_output: RankedResults = seed_set_retr_output.to_layout(
-            DataLayout.PANDAS
+        seed_set_retr_output: RankedResults = seed_set_retr_output.to_layout(DataLayout.PANDAS)
+        seed_set_retr_output.data[LABEL_VERBALIZATION_COL] = seed_set_retr_output.data[label_col].map(
+            label_verbalizer
         )
-        seed_set_retr_output.data[LABEL_VERBALIZATION_COL] = seed_set_retr_output.data[
-            label_col
-        ].map(label_verbalizer)
 
-        self.info(
-            f'\nCreating ICL dataset and SynthesizRR dataset for "{dataset_name.canonical()}"...'
-        )
-        executor = dispatch_executor(
-            parallelize=Parallelize.sync, max_workers=len(label_verbalizer)
-        )
+        self.info(f'\nCreating ICL dataset and SynthesizRR dataset for "{dataset_name.canonical()}"...')
+        executor = dispatch_executor(parallelize=Parallelize.sync, max_workers=len(label_verbalizer))
         try:
             icl_dataset_files: Dict[str, FileMetadata] = {}
             synthesizrr_dataset_files: Dict[str, FileMetadata] = {}
             futs: Dict[str, Any] = {}
             for label_text, label_verbalization in label_verbalizer.items():
                 self.info(f'\nRunning for label="{label_text}"')
-                labelwise_icl_dataset_file, labelwise_synthesizrr_dataset_file = (
-                    self.save_to(
-                        results_dir=results_dir,
-                        dataset_name=dataset_name,
+                labelwise_icl_dataset_file, labelwise_synthesizrr_dataset_file = self.save_to(
+                    results_dir=results_dir,
+                    dataset_name=dataset_name,
+                    corpus=corpus,
+                    retriever=retriever,
+                    model_name=model_name,
+                    seed_type=seed_type,
+                    seed_size=seed_size,
+                    seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
+                    seed_generation_params_hash=seed_generation_params_hash,
+                    icl_type=icl_type,
+                    label_text=label_text,
+                    retrieval_top_k=retrieval_top_k,
+                    retr_icl_top_ks=retr_icl_top_ks,
+                    retr_icl_distance_range=retr_icl_distance_range,
+                    retr_icl_token_range=retr_icl_token_range,
+                    synthesizrr_top_k_range=synthesizrr_top_k_range,
+                    synthesizrr_distance_range=synthesizrr_distance_range,
+                    synthesizrr_max_tokens=synthesizrr_max_tokens,
+                    num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
+                    seed=seed,
+                    seed_set_data_split=seed_set_data_split,
+                )
+                icl_dataset_files[label_text]: FileMetadata = labelwise_icl_dataset_file
+                synthesizrr_dataset_files[label_text]: FileMetadata = labelwise_synthesizrr_dataset_file
+                if (not labelwise_icl_dataset_file.exists()) or (
+                    not labelwise_synthesizrr_dataset_file.exists()
+                ):
+                    self.info(f'\nCreating input datasets for label="{label_text}"')
+                    futs[label_text] = self._save_labelwise_retrieved_icl_and_text_inputs(
+                        seed_set_retr_output=seed_set_retr_output,
+                        seed_set_data_split=seed_set_data_split,
+                        label_verbalizer=label_verbalizer,
                         corpus=corpus,
                         retriever=retriever,
+                        query_col=query_col,
+                        context_col=context_col,
+                        label_col=label_col,
+                        num_shots_list=num_shots_list,
                         model_name=model_name,
-                        seed_type=seed_type,
-                        seed_size=seed_size,
-                        seed_set_stratify_on_ground_truth=seed_set_stratify_on_ground_truth,
-                        seed_generation_params_hash=seed_generation_params_hash,
-                        icl_type=icl_type,
                         label_text=label_text,
-                        retrieval_top_k=retrieval_top_k,
+                        icl_type=icl_type,
                         retr_icl_top_ks=retr_icl_top_ks,
                         retr_icl_distance_range=retr_icl_distance_range,
                         retr_icl_token_range=retr_icl_token_range,
                         synthesizrr_top_k_range=synthesizrr_top_k_range,
                         synthesizrr_distance_range=synthesizrr_distance_range,
                         synthesizrr_max_tokens=synthesizrr_max_tokens,
-                        num_samples_per_label=get_default(
-                            num_samples_per_label, {}
-                        ).get(label_text),
+                        num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
                         seed=seed,
-                        seed_set_data_split=seed_set_data_split,
-                    )
-                )
-                icl_dataset_files[label_text]: FileMetadata = labelwise_icl_dataset_file
-                synthesizrr_dataset_files[
-                    label_text
-                ]: FileMetadata = labelwise_synthesizrr_dataset_file
-                if (not labelwise_icl_dataset_file.exists()) or (
-                    not labelwise_synthesizrr_dataset_file.exists()
-                ):
-                    self.info(f'\nCreating input datasets for label="{label_text}"')
-                    futs[label_text] = (
-                        self._save_labelwise_retrieved_icl_and_text_inputs(
-                            seed_set_retr_output=seed_set_retr_output,
-                            seed_set_data_split=seed_set_data_split,
-                            label_verbalizer=label_verbalizer,
-                            corpus=corpus,
-                            retriever=retriever,
-                            query_col=query_col,
-                            context_col=context_col,
-                            label_col=label_col,
-                            num_shots_list=num_shots_list,
-                            model_name=model_name,
-                            label_text=label_text,
-                            icl_type=icl_type,
-                            retr_icl_top_ks=retr_icl_top_ks,
-                            retr_icl_distance_range=retr_icl_distance_range,
-                            retr_icl_token_range=retr_icl_token_range,
-                            synthesizrr_top_k_range=synthesizrr_top_k_range,
-                            synthesizrr_distance_range=synthesizrr_distance_range,
-                            synthesizrr_max_tokens=synthesizrr_max_tokens,
-                            num_samples_per_label=get_default(
-                                num_samples_per_label, {}
-                            ).get(label_text),
-                            seed=seed,
-                            labelwise_icl_dataset_file=labelwise_icl_dataset_file,
-                            labelwise_synthesizrr_dataset_file=labelwise_synthesizrr_dataset_file,
-                            verbosity=self.verbosity,
-                            # parallelize=Parallelize.sync,
-                            # executor=executor,
-                        )
+                        labelwise_icl_dataset_file=labelwise_icl_dataset_file,
+                        labelwise_synthesizrr_dataset_file=labelwise_synthesizrr_dataset_file,
+                        verbosity=self.verbosity,
+                        # parallelize=Parallelize.sync,
+                        # executor=executor,
                     )
             accumulate(
                 futs,
@@ -1618,17 +1468,13 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
             icl_dataset: List[ClassificationData] = []
             synthesizrr_dataset: List[TextInputs] = []
             for label_text, label_verbalization in label_verbalizer.items():
-                icl_dataset.append(
-                    load_dataset(icl_dataset_files[label_text], retry=10, retry_wait=10)
-                )
+                icl_dataset.append(load_dataset(icl_dataset_files[label_text], retry=10, retry_wait=10))
                 self.info(
                     f">> Loaded {len(icl_dataset[-1])} ICL examples "
                     f'from "{icl_dataset_files[label_text].path}"'
                 )
                 synthesizrr_dataset.append(
-                    load_dataset(
-                        synthesizrr_dataset_files[label_text], retry=10, retry_wait=10
-                    )
+                    load_dataset(synthesizrr_dataset_files[label_text], retry=10, retry_wait=10)
                 )
                 self.info(
                     f">> Loaded {len(synthesizrr_dataset[-1])} SynthesizRR examples "
@@ -1637,13 +1483,9 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
             self.info(
                 f'...done creating ICL dataset and SynthesizRR dataset for "{dataset_name.canonical()}".'
             )
-            icl_dataset: ClassificationData = Dataset.concat(icl_dataset).to_layout(
-                DataLayout.PANDAS
-            )
+            icl_dataset: ClassificationData = Dataset.concat(icl_dataset).to_layout(DataLayout.PANDAS)
             icl_dataset.data = icl_dataset.data.reset_index(drop=True)
-            synthesizrr_dataset: TextInputs = Dataset.concat(
-                synthesizrr_dataset
-            ).to_layout(DataLayout.PANDAS)
+            synthesizrr_dataset: TextInputs = Dataset.concat(synthesizrr_dataset).to_layout(DataLayout.PANDAS)
             synthesizrr_dataset.data = synthesizrr_dataset.data.reset_index(drop=True)
             return dict(
                 icl_dataset=icl_dataset,
@@ -1691,21 +1533,16 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
         if seed_size != dataset_name.seed_size():
             seed_size_str: str = f"-seed_size={seed_size}"
         stratified_str = ""
-        if (
-            seed_set_stratify_on_ground_truth
-            != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH
-        ):
+        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
             stratified_str: str = (
-                "gt_stratified"
-                if seed_set_stratify_on_ground_truth
-                else "not_gt_stratified"
+                "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
             )
             stratified_str: str = f"-stratified={stratified_str}"
 
         if icl_type == "retrieved":
-            icl_type_str: str = f"retrieved_icl_dataset"
+            icl_type_str: str = "retrieved_icl_dataset"
         elif icl_type == "curated":
-            icl_type_str: str = f"curated_icl_dataset"
+            icl_type_str: str = "curated_icl_dataset"
         elif icl_type == "seed":
             icl_type_str: str = f"{seed_type}_seed_icl_dataset"
         else:
@@ -1715,16 +1552,12 @@ class CreateSynthesizRRDatasets(CreateInputDatasets):
 
         def get_save_to_file(key: str) -> FileMetadata:
             return (
-                results_dir.subdir_in_dir(
-                    "retrieval-augmented-dataset-generation", return_metadata=True
-                )
+                results_dir.subdir_in_dir("retrieval-augmented-dataset-generation", return_metadata=True)
                 .subdir_in_dir(dataset_name.canonical(), return_metadata=True)
                 .subdir_in_dir(key, return_metadata=True)
                 .subdir_in_dir(corpus.canonical(), return_metadata=True)
                 .subdir_in_dir(retriever.canonical(), return_metadata=True)
-                .subdir_in_dir(
-                    f"retrieval_top_k={retrieval_top_k}", return_metadata=True
-                )
+                .subdir_in_dir(f"retrieval_top_k={retrieval_top_k}", return_metadata=True)
                 .subdir_in_dir(model_name.canonical(), return_metadata=True)
                 .subdir_in_dir(
                     f"num_samples_per_label={num_samples_per_label_str}",
@@ -1769,9 +1602,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
         icl_dataset: ClassificationData,  ## Input ICL dataset
         icl_template: constr(min_length=1),
         prompt_template: constr(min_length=1),
-        text_gens_files: Dict[
-            int, Dict[str, FileMetadata]
-        ],  ## Outputs will be saved here
+        text_gens_files: Dict[int, Dict[str, FileMetadata]],  ## Outputs will be saved here
         label_verbalizer: Dict[str, str],
         label_col: str,
         max_new_tokens: conint(ge=1),
@@ -1825,9 +1656,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
         icl_dataset: ClassificationData,  ## Input ICL dataset
         icl_template: constr(min_length=1),
         prompt_template: constr(min_length=1),
-        text_gens_files: Dict[
-            int, Dict[str, FileMetadata]
-        ],  ## Outputs will be saved here
+        text_gens_files: Dict[int, Dict[str, FileMetadata]],  ## Outputs will be saved here
         label_verbalizer: Dict[str, str],
         label_col: str,
         generation_params: Optional[Dict],
@@ -1844,9 +1673,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
         llm_evaluation_timeout: confloat(ge=0.0, allow_inf_nan=True),
         seed: int,
     ) -> Dict[int, Dict[str, TextGenerationsPredictionsBase]]:
-        executor: ThreadPoolExecutor = ThreadPoolExecutor(
-            max_workers=llm_num_concurrent_preds
-        )
+        executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=llm_num_concurrent_preds)
         llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = {}
         num_shots_list: List[int] = sorted(list(text_gens_files.keys()))
         ## Create one for every (num_shots, label) pair
@@ -1869,28 +1696,18 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                     labelwise_icl_dataset: ClassificationData = icl_dataset.filter(
                         lambda row: row[label_col] == label_text
                     ).to_layout(DataLayout.PANDAS)
-                    labelwise_icl_dataset.data = labelwise_icl_dataset.data.reset_index(
-                        drop=True
-                    )
-                    labelwise_text_input_dataset: TextInputs = (
-                        text_input_dataset.filter(
-                            lambda row: row[label_col] == label_text
-                        ).to_layout(DataLayout.PANDAS)
-                    )
+                    labelwise_icl_dataset.data = labelwise_icl_dataset.data.reset_index(drop=True)
+                    labelwise_text_input_dataset: TextInputs = text_input_dataset.filter(
+                        lambda row: row[label_col] == label_text
+                    ).to_layout(DataLayout.PANDAS)
                     llm_tracking_batch_size: int = get_default(
                         llm_tracking_batch_size,
-                        math.ceil(
-                            len(labelwise_text_input_dataset) / 10
-                        ),  ## Default: 10 increments
+                        math.ceil(len(labelwise_text_input_dataset) / 10),  ## Default: 10 increments
                     )
-                    llm_tracking_batch_size: int = max(
-                        llm_tracking_batch_size, llm_submission_batch_size
-                    )
+                    llm_tracking_batch_size: int = max(llm_tracking_batch_size, llm_submission_batch_size)
                     # print(f'icl_template="""\n{icl_template.format(**dict(label_verbalization=label_verbalization))}\n"""')
                     # print(f'prompt_template="""\n{prompt_template.format(**dict(label_verbalization=label_verbalization))}\n"""')
-                    text_generators[num_shots][
-                        label_text
-                    ]: FewShotTextGenerator = FewShotTextGenerator.of(
+                    text_generators[num_shots][label_text]: FewShotTextGenerator = FewShotTextGenerator.of(
                         lm=llm_evaluator,
                         icl_dataset=labelwise_icl_dataset,
                         hyperparams=dict(
@@ -1909,23 +1726,19 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                         ),
                     )
 
-            self.info(
-                f'...done creating LLM evaluators for "{model_name.canonical()}"...'
-            )
+            self.info(f'...done creating LLM evaluators for "{model_name.canonical()}"...')
             self.info(f'Running LLM evaluators for "{model_name.canonical()}"...')
             for num_shots in text_gens_files.keys():
                 llm_generations.setdefault(num_shots, {})
                 for label_text, text_gens_file in text_gens_files[num_shots].items():
-                    labelwise_text_input_dataset: TextInputs = (
-                        text_input_dataset.filter(
-                            lambda row: row[label_col] == label_text
-                        )
+                    labelwise_text_input_dataset: TextInputs = text_input_dataset.filter(
+                        lambda row: row[label_col] == label_text
                     )
-                    labelwise_text_input_dataset: TextInputs = (
-                        labelwise_text_input_dataset.to_layout(DataLayout.PANDAS)
+                    labelwise_text_input_dataset: TextInputs = labelwise_text_input_dataset.to_layout(
+                        DataLayout.PANDAS
                     )
-                    labelwise_text_input_dataset.data = (
-                        labelwise_text_input_dataset.data.reset_index(drop=True)
+                    labelwise_text_input_dataset.data = labelwise_text_input_dataset.data.reset_index(
+                        drop=True
                     )
                     llm_generations[num_shots][label_text] = run_concurrent(
                         self._run_single_text_generator,
@@ -1939,9 +1752,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                         )
                         if self.verbosity >= 2
                         else False,
-                        llm_submission_batch_size=get_default(
-                            llm_submission_batch_size, llm_batch_size * 8
-                        ),
+                        llm_submission_batch_size=get_default(llm_submission_batch_size, llm_batch_size * 8),
                         text_gens_file=text_gens_file,
                         dataset_name=dataset_name,
                         model_name=model_name,
@@ -1952,12 +1763,10 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                         executor=executor,
                     )
                     time.sleep(10)
-            self.info(f"...submitted all inputs to LLM evaluators...")
+            self.info("...submitted all inputs to LLM evaluators...")
             for num_shots in text_gens_files.keys():
                 ## Collect for all labels in a single num_shots:
-                llm_generations[num_shots]: Dict[
-                    str, TextGenerationsPredictionsBase
-                ] = accumulate(
+                llm_generations[num_shots]: Dict[str, TextGenerationsPredictionsBase] = accumulate(
                     llm_generations[num_shots],
                     progress_bar=dict(
                         desc=f"Collect predictions for {len(text_gens_files[num_shots])} labels, num_shots={num_shots}"
@@ -1970,9 +1779,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             stop_executor(executor)
             for num_shots in text_generators.keys():
                 for label_text in text_generators[num_shots].keys():
-                    text_generator: FewShotTextGenerator = text_generators[num_shots][
-                        label_text
-                    ]
+                    text_generator: FewShotTextGenerator = text_generators[num_shots][label_text]
                     if isinstance(text_generator.lm, Evaluator):
                         text_generator.lm.stop()
             gc.collect()
@@ -2003,9 +1810,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             )
         elif model_name.is_openai():
             if generation_params is not None:
-                raise ValueError(
-                    f"Cannot use `generation_params` with model_name={model_name}"
-                )
+                raise ValueError(f"Cannot use `generation_params` with model_name={model_name}")
             return self._create_chatgpt_evaluator(
                 model_name=model_name,
                 max_new_tokens=max_new_tokens,
@@ -2014,9 +1819,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             )
         elif model_name.is_claude():
             if generation_params is not None:
-                raise ValueError(
-                    f"Cannot use `generation_params` with model_name={model_name}"
-                )
+                raise ValueError(f"Cannot use `generation_params` with model_name={model_name}")
             return self._create_claude_evaluator(
                 model_name=model_name,
                 max_new_tokens=max_new_tokens,
@@ -2204,8 +2007,8 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
             num_shots_text_gens_list: List[TextGenerationsPredictionsBase] = []
             self.info(f"\nLoading text generations for num_shots={num_shots}...")
             for label_text, text_gens_file in text_gens_files[num_shots].items():
-                labelwise_num_shots_text_gens: TextGenerationsPredictionsBase = (
-                    load_predictions(text_gens_file, retry=10, retry_wait=10)
+                labelwise_num_shots_text_gens: TextGenerationsPredictionsBase = load_predictions(
+                    text_gens_file, retry=10, retry_wait=10
                 )
                 num_shots_text_gens_list.append(labelwise_num_shots_text_gens)
 
@@ -2217,9 +2020,9 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                     f"label_text={label_text}"
                     f') from "{text_gens_files[num_shots][label_text].path}".'
                 )
-            text_gens[num_shots]: TextGenerations = Predictions.concat(
-                num_shots_text_gens_list
-            ).to_layout(DataLayout.PANDAS)
+            text_gens[num_shots]: TextGenerations = Predictions.concat(num_shots_text_gens_list).to_layout(
+                DataLayout.PANDAS
+            )
             self.info(f"\n...loaded text generations for num_shots={num_shots}.")
 
             self.info(
@@ -2229,9 +2032,7 @@ class LLMEvaluatorStep(CachedResultsStep, ABC):
                 f"num_shots={num_shots}"
                 f"):"
             )
-            self.info(
-                calc_label_dist(text_gens[num_shots].data.pandas(), label_col=label_col)
-            )
+            self.info(calc_label_dist(text_gens[num_shots].data.pandas(), label_col=label_col))
         return text_gens
 
 
@@ -2278,14 +2079,12 @@ class FewGen(LLMEvaluatorStep):
             num_samples_per_label=num_samples_per_label,
             label_verbalizer=label_verbalizer,
         )
-        icl_template, icl_template_hash, prompt_template, prompt_template_hash = (
-            get_templates_and_hashes(
-                expt=Experiment.FewGen,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                icl_template=icl_template,
-                prompt_template=prompt_template,
-            )
+        icl_template, icl_template_hash, prompt_template, prompt_template_hash = get_templates_and_hashes(
+            expt=Experiment.FewGen,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            icl_template=icl_template,
+            prompt_template=prompt_template,
         )
 
         text_gens_files: Dict[int, Dict[str, FileMetadata]] = {}
@@ -2315,9 +2114,7 @@ class FewGen(LLMEvaluatorStep):
                 )
                 if not text_gens_files[num_shots][label_text].exists():
                     missing_text_gens_files.setdefault(num_shots, {})
-                    missing_text_gens_files[num_shots][label_text] = text_gens_files[
-                        num_shots
-                    ][label_text]
+                    missing_text_gens_files[num_shots][label_text] = text_gens_files[num_shots][label_text]
                 else:
                     self.info(
                         f">> Generations already exists for ("
@@ -2329,30 +2126,28 @@ class FewGen(LLMEvaluatorStep):
                     )
 
         if len(missing_text_gens_files) > 0:
-            llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = (
-                self._run_llm_evaluators(
-                    dataset_name=dataset_name,
-                    model_name=model_name,
-                    text_gens_files=missing_text_gens_files,
-                    label_verbalizer=label_verbalizer,
-                    max_new_tokens=fewgen_max_tokens,
-                    llm_batch_size=llm_batch_size,
-                    llm_submission_batch_size=llm_submission_batch_size,
-                    llm_tracking_batch_size=llm_tracking_batch_size,
-                    icl_dataset=icl_dataset,
-                    text_input_dataset=text_input_dataset,
-                    icl_template=icl_template,
-                    prompt_template=prompt_template,
-                    top_p=top_p,
-                    temperature=temperature,
-                    llm_resources_per_model=llm_resources_per_model,
-                    llm_num_concurrent_preds=llm_num_concurrent_preds,
-                    llm_num_models=llm_num_models,
-                    label_col=label_col,
-                    llm_load_balancing_strategy=llm_load_balancing_strategy,
-                    llm_evaluation_timeout=llm_evaluation_timeout,
-                    seed=seed,
-                )
+            llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = self._run_llm_evaluators(
+                dataset_name=dataset_name,
+                model_name=model_name,
+                text_gens_files=missing_text_gens_files,
+                label_verbalizer=label_verbalizer,
+                max_new_tokens=fewgen_max_tokens,
+                llm_batch_size=llm_batch_size,
+                llm_submission_batch_size=llm_submission_batch_size,
+                llm_tracking_batch_size=llm_tracking_batch_size,
+                icl_dataset=icl_dataset,
+                text_input_dataset=text_input_dataset,
+                icl_template=icl_template,
+                prompt_template=prompt_template,
+                top_p=top_p,
+                temperature=temperature,
+                llm_resources_per_model=llm_resources_per_model,
+                llm_num_concurrent_preds=llm_num_concurrent_preds,
+                llm_num_models=llm_num_models,
+                label_col=label_col,
+                llm_load_balancing_strategy=llm_load_balancing_strategy,
+                llm_evaluation_timeout=llm_evaluation_timeout,
+                seed=seed,
             )
         text_gens: Dict[int, TextGenerationsPredictionsBase] = self._load_text_gens(
             text_gens_files=text_gens_files,
@@ -2400,35 +2195,24 @@ class FewGen(LLMEvaluatorStep):
         if seed_size != dataset_name.seed_size():
             seed_size_str: str = f"-seed_size={seed_size}"
         stratified_str = ""
-        if (
-            seed_set_stratify_on_ground_truth
-            != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH
-        ):
+        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
             stratified_str: str = (
-                "gt_stratified"
-                if seed_set_stratify_on_ground_truth
-                else "not_gt_stratified"
+                "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
             )
             stratified_str: str = f"-stratified={stratified_str}"
 
         num_samples_per_label_str: str = get_default(num_samples_per_label, "all")
 
         icl_template_hash_str: str = (
-            ""
-            if icl_template_hash is None
-            else f"-icl_template_hash={icl_template_hash}"
+            "" if icl_template_hash is None else f"-icl_template_hash={icl_template_hash}"
         )
         prompt_template_hash_str: str = (
-            ""
-            if prompt_template_hash is None
-            else f"-prompt_template_hash={prompt_template_hash}"
+            "" if prompt_template_hash is None else f"-prompt_template_hash={prompt_template_hash}"
         )
 
         label_verbalization_str: str = ""
         if label_verbalization != dataset_name.label_verbalizer()[label_text]:
-            label_verbalization_str: str = (
-                f"-vb={StringUtil.hash(label_verbalization, max_len=4)}"
-            )
+            label_verbalization_str: str = f"-vb={StringUtil.hash(label_verbalization, max_len=4)}"
 
         top_p_str: str = ""
         if top_p != DEFAULT_TOP_P:
@@ -2522,14 +2306,12 @@ class SynthesizRR(LLMEvaluatorStep):
             num_samples_per_label=num_samples_per_label,
             label_verbalizer=label_verbalizer,
         )
-        icl_template, icl_template_hash, prompt_template, prompt_template_hash = (
-            get_templates_and_hashes(
-                expt=Experiment.SynthesizRR,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                icl_template=icl_template,
-                prompt_template=prompt_template,
-            )
+        icl_template, icl_template_hash, prompt_template, prompt_template_hash = get_templates_and_hashes(
+            expt=Experiment.SynthesizRR,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            icl_template=icl_template,
+            prompt_template=prompt_template,
         )
 
         text_gens_files: Dict[int, Dict[str, FileMetadata]] = {}
@@ -2562,16 +2344,12 @@ class SynthesizRR(LLMEvaluatorStep):
                     temperature=temperature,
                     icl_template_hash=icl_template_hash,
                     prompt_template_hash=prompt_template_hash,
-                    num_samples_per_label=get_default(num_samples_per_label, {}).get(
-                        label_text
-                    ),
+                    num_samples_per_label=get_default(num_samples_per_label, {}).get(label_text),
                     seed=seed,
                 )
                 if not text_gens_files[num_shots][label_text].exists():
                     missing_text_gens_files.setdefault(num_shots, {})
-                    missing_text_gens_files[num_shots][label_text] = text_gens_files[
-                        num_shots
-                    ][label_text]
+                    missing_text_gens_files[num_shots][label_text] = text_gens_files[num_shots][label_text]
                 else:
                     self.info(
                         f">> Generations already exists for ("
@@ -2583,30 +2361,28 @@ class SynthesizRR(LLMEvaluatorStep):
                     )
 
         if len(missing_text_gens_files) > 0:
-            llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = (
-                self._run_llm_evaluators(
-                    dataset_name=dataset_name,
-                    model_name=model_name,
-                    text_gens_files=missing_text_gens_files,
-                    label_verbalizer=label_verbalizer,
-                    max_new_tokens=synthesizrr_max_tokens,
-                    llm_batch_size=llm_batch_size,
-                    llm_submission_batch_size=llm_submission_batch_size,
-                    llm_tracking_batch_size=llm_tracking_batch_size,
-                    icl_dataset=icl_dataset,
-                    text_input_dataset=text_input_dataset,
-                    icl_template=icl_template,
-                    prompt_template=prompt_template,
-                    top_p=top_p,
-                    temperature=temperature,
-                    llm_resources_per_model=llm_resources_per_model,
-                    llm_num_concurrent_preds=llm_num_concurrent_preds,
-                    llm_num_models=llm_num_models,
-                    label_col=label_col,
-                    llm_load_balancing_strategy=llm_load_balancing_strategy,
-                    llm_evaluation_timeout=llm_evaluation_timeout,
-                    seed=seed,
-                )
+            llm_generations: Dict[int, Dict[str, TextGenerationsPredictionsBase]] = self._run_llm_evaluators(
+                dataset_name=dataset_name,
+                model_name=model_name,
+                text_gens_files=missing_text_gens_files,
+                label_verbalizer=label_verbalizer,
+                max_new_tokens=synthesizrr_max_tokens,
+                llm_batch_size=llm_batch_size,
+                llm_submission_batch_size=llm_submission_batch_size,
+                llm_tracking_batch_size=llm_tracking_batch_size,
+                icl_dataset=icl_dataset,
+                text_input_dataset=text_input_dataset,
+                icl_template=icl_template,
+                prompt_template=prompt_template,
+                top_p=top_p,
+                temperature=temperature,
+                llm_resources_per_model=llm_resources_per_model,
+                llm_num_concurrent_preds=llm_num_concurrent_preds,
+                llm_num_models=llm_num_models,
+                label_col=label_col,
+                llm_load_balancing_strategy=llm_load_balancing_strategy,
+                llm_evaluation_timeout=llm_evaluation_timeout,
+                seed=seed,
             )
         text_gens: Dict[int, TextGenerationsPredictionsBase] = self._load_text_gens(
             text_gens_files=text_gens_files,
@@ -2662,21 +2438,16 @@ class SynthesizRR(LLMEvaluatorStep):
         if seed_size != dataset_name.seed_size():
             seed_size_str: str = f"-seed_size={seed_size}"
         stratified_str = ""
-        if (
-            seed_set_stratify_on_ground_truth
-            != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH
-        ):
+        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
             stratified_str: str = (
-                "gt_stratified"
-                if seed_set_stratify_on_ground_truth
-                else "not_gt_stratified"
+                "gt_stratified" if seed_set_stratify_on_ground_truth else "not_gt_stratified"
             )
             stratified_str: str = f"-stratified={stratified_str}"
 
         if icl_type == "retrieved":
-            icl_type_str: str = f"retrieved_icl_dataset"
+            icl_type_str: str = "retrieved_icl_dataset"
         elif icl_type == "curated":
-            icl_type_str: str = f"curated_icl_dataset"
+            icl_type_str: str = "curated_icl_dataset"
         elif icl_type == "seed":
             icl_type_str: str = f"{seed_type}_seed_icl_dataset"
         else:
@@ -2685,21 +2456,15 @@ class SynthesizRR(LLMEvaluatorStep):
         num_samples_per_label_str: str = get_default(num_samples_per_label, "all")
 
         icl_template_hash_str: str = (
-            ""
-            if icl_template_hash is None
-            else f"-icl_template_hash={icl_template_hash}"
+            "" if icl_template_hash is None else f"-icl_template_hash={icl_template_hash}"
         )
         prompt_template_hash_str: str = (
-            ""
-            if prompt_template_hash is None
-            else f"-prompt_template_hash={prompt_template_hash}"
+            "" if prompt_template_hash is None else f"-prompt_template_hash={prompt_template_hash}"
         )
 
         label_verbalization_str: str = ""
         if label_verbalization != dataset_name.label_verbalizer()[label_text]:
-            label_verbalization_str: str = (
-                f"-vb={StringUtil.hash(label_verbalization, max_len=4)}"
-            )
+            label_verbalization_str: str = f"-vb={StringUtil.hash(label_verbalization, max_len=4)}"
 
         top_p_str: str = ""
         if top_p != DEFAULT_TOP_P:
@@ -2709,18 +2474,13 @@ class SynthesizRR(LLMEvaluatorStep):
             temperature_str = f"-temp={temperature}"
 
         return (
-            results_dir.subdir_in_dir(
-                "retrieval-augmented-dataset-generation", return_metadata=True
-            )
+            results_dir.subdir_in_dir("retrieval-augmented-dataset-generation", return_metadata=True)
             .subdir_in_dir(dataset_name.canonical(), return_metadata=True)
             .subdir_in_dir("synthesizrr-generations", return_metadata=True)
             .subdir_in_dir(corpus.canonical(), return_metadata=True)
             .subdir_in_dir(retriever.canonical(), return_metadata=True)
             .subdir_in_dir(model_name.canonical(), return_metadata=True)
-            .subdir_in_dir(
-                f"num_samples_per_label={num_samples_per_label_str}",
-                return_metadata=True,
-            )
+            .subdir_in_dir(f"num_samples_per_label={num_samples_per_label_str}", return_metadata=True)
             .subdir_in_dir(f"num_shots={num_shots}", return_metadata=True)
             .subdir_in_dir(f"label_text={label_text}", return_metadata=True)
             .file_in_dir(
@@ -2750,90 +2510,3 @@ class SynthesizRR(LLMEvaluatorStep):
             )
             .update_params(file_format=FileFormat.PARQUET)
         )
-            synthesizrr_max_tokens: conint(ge=1),
-            top_p: confloat(ge=0.0, le=1.0),
-            temperature: confloat(ge=0.0, le=1e6),
-            icl_template_hash: Optional[constr(min_length=6)],
-            prompt_template_hash: Optional[constr(min_length=6)],
-            num_samples_per_label: Optional[conint(ge=1)],
-            seed: int,
-            **kwargs,
-    ) -> FileMetadata:
-        ## RESULTS_DIR/retrieval-augmented-dataset-generation/ag_news/retrieval-data/toi_without_datasets/ag_news_seed_retr_output_toi_without_datasets.jsonlines
-        if seed_type == 'generated':
-            assert seed_generation_params_hash is not None
-            seed_type_str: str = f'generated_seed_set={seed_generation_params_hash}'
-        elif seed_type == 'train_set':
-            seed_type_str: str = f'{seed_set_data_split.lower()}_set_seed_set'
-        else:
-            raise not_impl('seed_type', seed_type)
-
-        seed_size_str = ''
-        if seed_size != dataset_name.seed_size():
-            seed_size_str: str = f"-seed_size={seed_size}"
-        stratified_str = ''
-        if seed_set_stratify_on_ground_truth != DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH:
-            stratified_str: str = 'gt_stratified' if seed_set_stratify_on_ground_truth else 'not_gt_stratified'
-            stratified_str: str = f"-stratified={stratified_str}"
-
-        if icl_type == 'retrieved':
-            icl_type_str: str = f'retrieved_icl_dataset'
-        elif icl_type == 'curated':
-            icl_type_str: str = f'curated_icl_dataset'
-        elif icl_type == 'seed':
-            icl_type_str: str = f'{seed_type}_seed_icl_dataset'
-        else:
-            raise not_impl('icl_type', icl_type)
-
-        num_samples_per_label_str: str = get_default(num_samples_per_label, 'all')
-
-        icl_template_hash_str: str = '' if icl_template_hash is None \
-            else f'-icl_template_hash={icl_template_hash}'
-        prompt_template_hash_str: str = '' if prompt_template_hash is None \
-            else f'-prompt_template_hash={prompt_template_hash}'
-
-        label_verbalization_str: str = ''
-        if label_verbalization != dataset_name.label_verbalizer()[label_text]:
-            label_verbalization_str: str = f'-vb={StringUtil.hash(label_verbalization, max_len=4)}'
-
-        top_p_str: str = ''
-        if top_p != DEFAULT_TOP_P:
-            top_p_str = f'-top_p={top_p:.2f}'
-        temperature_str: str = ''
-        if temperature != DEFAULT_TEMPERATURE:
-            temperature_str = f'-temp={temperature}'
-
-        return results_dir.subdir_in_dir('retrieval-augmented-dataset-generation', return_metadata=True) \
-            .subdir_in_dir(dataset_name.canonical(), return_metadata=True) \
-            .subdir_in_dir('synthesizrr-generations', return_metadata=True) \
-            .subdir_in_dir(corpus.canonical(), return_metadata=True) \
-            .subdir_in_dir(retriever.canonical(), return_metadata=True) \
-            .subdir_in_dir(model_name.canonical(), return_metadata=True) \
-            .subdir_in_dir(f'num_samples_per_label={num_samples_per_label_str}', return_metadata=True) \
-            .subdir_in_dir(f'num_shots={num_shots}', return_metadata=True) \
-            .subdir_in_dir(f'label_text={label_text}', return_metadata=True) \
-            .file_in_dir(
-            f"{icl_type_str}"
-            f"-{seed_type_str}{seed_size_str}{stratified_str}-retr_output"
-            f"-dataset={dataset_name.canonical()}"
-            f"-corpus={corpus.canonical()}"
-            f"-retriever={retriever.canonical()}"
-            f"-model_name={model_name.canonical()}"
-            f"-num_samples_per_label={num_samples_per_label_str}"
-            f"-num_shots={num_shots}"
-            f"-label_text={label_text}"
-            f"{label_verbalization_str}"
-            f"-seed={seed}"
-            f"-retr_icl_top_ks={retr_icl_top_ks}"
-            f"-retr_icl_distance_range={retr_icl_distance_range}"
-            f"-retr_icl_token_range={retr_icl_token_range}"
-            f"-synthesizrr_top_k_range=range({synthesizrr_top_k_range.start}, {synthesizrr_top_k_range.stop}, {synthesizrr_top_k_range.step})"
-            f"-synthesizrr_distance_range={synthesizrr_distance_range}"
-            f"-synthesizrr_max_tokens={synthesizrr_max_tokens}"
-            f"{top_p_str}"
-            f"{temperature_str}"
-            f"{icl_template_hash_str}"
-            f"{prompt_template_hash_str}"
-            f".parquet",
-            return_metadata=True,
-        ).update_params(file_format=FileFormat.PARQUET)

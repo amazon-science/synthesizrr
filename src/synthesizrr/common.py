@@ -1,21 +1,11 @@
 import math
 import re
 from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Set, Tuple, Union
 
 import pandas as pd
 import ray
-from fmcore.constants import DataLayout, DataSplit, FileFormat
-from fmcore.data import FileMetadata, Reader, Writer
-from fmcore.framework import ActorComposite
-from fmcore.framework.chain.Chain import Step
-from fmcore.framework.metric import Metric, Metrics
-from fmcore.framework.task.classification import ClassificationData
-from fmcore.framework.task.text_generation import (
-    GENERATED_TEXTS_COL,
-    TextGenerationsPredictionsBase,
-)
-from fmcore.framework.task_data import Dataset
-from fmcore.util import (
+from bears.util import (
     AutoEnum,
     FileSystemUtil,
     Parameters,
@@ -39,10 +29,20 @@ from fmcore.util import (
     str_normalize,
     type_str,
 )
-from fmcore.util.concurrency import accumulate
+from bears.util.concurrency import accumulate
+from fmcore.constants import DataLayout, DataSplit, FileFormat
+from fmcore.data import FileMetadata, Reader, Writer
+from fmcore.framework import ActorComposite
+from fmcore.framework._chain.Chain import Step
+from fmcore.framework._metric import Metric, Metrics
+from fmcore.framework._task.classification import ClassificationData
+from fmcore.framework._task.text_generation import (
+    GENERATED_TEXTS_COL,
+    TextGenerationsPredictionsBase,
+)
+from fmcore.framework._dataset import Dataset
 from nltk import word_tokenize
-from pydantic import confloat, conint, root_validator
-from pydantic.typing import Literal
+from pydantic import confloat, conint, model_validator
 from sklearn.model_selection import train_test_split
 
 from synthesizrr.corpus import CORPUS_DIR
@@ -68,9 +68,7 @@ ICL_EXAMPLE_TEXT_TEMPL: str = "{{icl[example_text]}}"
 RETRIEVED_CONTEXT_TEMPL: str = "{{retrieved_context}}"
 DISTANCE_COL: str = "distance"
 DISTANCE_METRIC_COL: str = "distance_metric"
-EFS_HUGGINGFACE_CACHE_DIR: FileMetadata = FileMetadata.of(
-    "/efs/.cache/huggingface/hub/"
-)
+EFS_HUGGINGFACE_CACHE_DIR: FileMetadata = FileMetadata.of("/efs/.cache/huggingface/hub/")
 DEFAULT_SEED_SET_DATA_SPLIT: DataSplit = DataSplit.TRAIN
 DEFAULT_SEED_SET_STRATIFY_ON_GROUND_TRUTH: bool = True
 DEFAULT_SEED: int = 42
@@ -203,11 +201,7 @@ class Student(AutoEnum):
                     name="linear_schedule_with_warmup",
                     num_warmup_steps=max(
                         1,
-                        int(
-                            training_steps
-                            * self.warmup_frac()
-                            / gradient_accumulation_steps
-                        ),
+                        int(training_steps * self.warmup_frac() / gradient_accumulation_steps),
                     ),
                 ),
                 gradient_accumulation_steps=gradient_accumulation_steps,
@@ -237,9 +231,7 @@ class Student(AutoEnum):
                         weight_decay=self.adam_weight_decay(),
                         eps=self.adam_epsilon(),
                     )
-                    for (
-                        lr,
-                    ) in parameterized_flatten(  ## Note: parameterized_flatten returns a tuple
+                    for (lr,) in parameterized_flatten(  ## Note: parameterized_flatten returns a tuple
                         [2e-5, 5e-5, 1e-4],  ## lr
                     )
                 ],
@@ -418,9 +410,7 @@ class DatasetName(AutoEnum):
         label_verbalizer: Dict[str, str],
     ) -> Dataset:
         dataset: Dataset = (
-            SynthesizRRDataset.get(self.canonical())
-            .datasets[data_split]
-            .read(read_as=DataLayout.PANDAS)
+            SynthesizRRDataset.get(self.canonical()).datasets[data_split].read(read_as=DataLayout.PANDAS)
         )
         dataset_df: pd.DataFrame = dataset.data.pandas()
         if stratify_on_ground_truth:
@@ -435,9 +425,7 @@ class DatasetName(AutoEnum):
             ## Balanced sample:
             num_labels: int = len(label_verbalizer)
             lb_sample_size: int = int(seed_size / num_labels)
-            if lb_sample_size != (
-                seed_size / num_labels
-            ):  ## Check it is perfectly divisible.
+            if lb_sample_size != (seed_size / num_labels):  ## Check it is perfectly divisible.
                 raise ValueError(
                     f"Expected seed size {seed_size} to be perfectly divisible "
                     f"by number of labels {len(label_verbalizer)}"
@@ -485,9 +473,7 @@ class DatasetName(AutoEnum):
             results_dir=results_dir,
             student=student,
         )
-        trialwise_final_model_metrics: Dict[str, Metrics] = Reader.of(
-            FileFormat.PICKLE
-        ).read(
+        trialwise_final_model_metrics: Dict[str, Metrics] = Reader.of(FileFormat.PICKLE).read(
             self.trialwise_final_model_metrics_file(label_preservation_model_dir),
         )
         best_trial_id, best_accuracy = sorted(
@@ -502,11 +488,9 @@ class DatasetName(AutoEnum):
             reverse=True,
         )[0]
         best_trial_metrics: Metrics = trialwise_final_model_metrics[best_trial_id]
-        best_trial_label_preservation_model_dir: FileMetadata = (
-            label_preservation_model_dir.subdir_in_dir(
-                best_trial_id,
-                return_metadata=True,
-            )
+        best_trial_label_preservation_model_dir: FileMetadata = label_preservation_model_dir.subdir_in_dir(
+            best_trial_id,
+            return_metadata=True,
         )
         return dict(
             best_trial_id=best_trial_id,
@@ -624,16 +608,14 @@ class DatasetName(AutoEnum):
             },
         }[self]
 
-    def icl_and_prompt_template(
-        self, expt: Experiment, model_name: str
-    ) -> Dict[str, str]:
+    def icl_and_prompt_template(self, expt: Experiment, model_name: str) -> Dict[str, str]:
         if expt is Experiment.Gold:
             return {}
         model_name: ModelName = ModelName(model_name)
 
-        icl_and_prompt_template_dict: Dict[str, Union[Dict, List[Tuple], str]] = (
-            ICL_AND_PROMPT_TEMPLATE_DICT[(self, expt)]
-        )
+        icl_and_prompt_template_dict: Dict[str, Union[Dict, List[Tuple], str]] = ICL_AND_PROMPT_TEMPLATE_DICT[
+            (self, expt)
+        ]
         assert "icl_template" in icl_and_prompt_template_dict
         assert "prompt_template" in icl_and_prompt_template_dict
         assert "claude_replacements" in icl_and_prompt_template_dict
@@ -641,19 +623,13 @@ class DatasetName(AutoEnum):
         prompt_template: str = icl_and_prompt_template_dict["prompt_template"]
 
         chat_templates: Dict[str, str] = icl_and_prompt_template_dict["chat_templates"]
-        chat_templates_chat_prompt_template: str = chat_templates[
-            "chat_prompt_template"
-        ]
+        chat_templates_chat_prompt_template: str = chat_templates["chat_prompt_template"]
         chat_templates_system_template: str = chat_templates["system_template"]
         chat_templates_icl_user_template: str = chat_templates["icl_user_template"]
-        chat_templates_icl_assistant_template: str = chat_templates[
-            "icl_assistant_template"
-        ]
+        chat_templates_icl_assistant_template: str = chat_templates["icl_assistant_template"]
         chat_templates_user_template: str = chat_templates["user_template"]
 
-        claude_replacements: List[Tuple[str, str]] = icl_and_prompt_template_dict[
-            "claude_replacements"
-        ]
+        claude_replacements: List[Tuple[str, str]] = icl_and_prompt_template_dict["claude_replacements"]
 
         if model_name.is_claude():
             for repl in as_list(claude_replacements):
@@ -1784,7 +1760,7 @@ class ModelName(AutoEnum):
             (ModelName.LLaMa_2_13B_Chat, DatasetName.AmazonReviewsPolarity): 3,
             (ModelName.LLaMa_2_13B_Chat, DatasetName.IMDb): 2,
             (ModelName.LLaMa_2_13B_Chat, DatasetName.AgNews): 2,
-            (ModelName.LLaMa_2_13B, DatasetName.ToiHeadlines): 2,
+            (ModelName.LLaMa_2_13B_Chat, DatasetName.ToiHeadlines): 2,
             ModelName.Mistral_7B_Instruct: 1,
             ModelName.Mixtral_8x7B_Instruct: 1,
         }
@@ -1909,9 +1885,7 @@ class ModelName(AutoEnum):
                 from transformers import PreTrainedTokenizerFast
 
                 tokenizer = PreTrainedTokenizerFast(
-                    tokenizer_file=FileSystemUtil.expand_dir(
-                        "~/claude/claude-v1-tokenization.json"
-                    )
+                    tokenizer_file=FileSystemUtil.expand_dir("~/claude/claude-v1-tokenization.json")
                 )
             else:
                 raise NotImplementedError(f"Unsupported: {self}")
@@ -1954,14 +1928,10 @@ def count_num_tokens(text: str, *, tokenizer: Any):
 
     if isinstance(tokenizer, tiktoken.core.Encoding):
         return len(tokenizer.encode(text))
-    elif isinstance(
-        tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase
-    ):
+    elif isinstance(tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase):
         return len(tokenizer.encode(text, add_special_tokens=False))
     else:
-        raise NotImplementedError(
-            f"Unrecognized type for tokenizer: {type_str(tokenizer)}"
-        )
+        raise NotImplementedError(f"Unrecognized type for tokenizer: {type_str(tokenizer)}")
 
 
 def shorten(
@@ -1989,9 +1959,7 @@ def shorten(
             return text  ## Not a single period in the sentence, so probably a short one like a chat.
         else:
             return tokenizer.decode(token_ids[: max_tok_idx + 1])
-    elif isinstance(
-        tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase
-    ):
+    elif isinstance(tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase):
         sentence_end_token_id: int = tokenizer.get_vocab()[sentence_end]
         assert sentence_end == tokenizer.decode(sentence_end_token_id)
         token_ids: List[int] = tokenizer.encode(text, add_special_tokens=False)
@@ -2007,9 +1975,7 @@ def shorten(
         else:
             return tokenizer.decode(token_ids[: max_tok_idx + 1])
     else:
-        raise NotImplementedError(
-            f"Unrecognized type for tokenizer: {type_str(tokenizer)}"
-        )
+        raise NotImplementedError(f"Unrecognized type for tokenizer: {type_str(tokenizer)}")
 
 
 @ray.remote
@@ -2063,16 +2029,10 @@ def tokenize_batch(texts: List[str], *, model_name) -> List[List[int]]:
 
     if isinstance(tokenizer, tiktoken.core.Encoding):
         return [list(tokenizer.encode(text)) for text in texts]
-    elif isinstance(
-        tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase
-    ):
-        return [
-            list(tokenizer.encode(text, add_special_tokens=False)) for text in texts
-        ]
+    elif isinstance(tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase):
+        return [list(tokenizer.encode(text, add_special_tokens=False)) for text in texts]
     else:
-        raise NotImplementedError(
-            f"Unrecognized type for tokenizer: {type_str(tokenizer)}"
-        )
+        raise NotImplementedError(f"Unrecognized type for tokenizer: {type_str(tokenizer)}")
 
 
 class MetricName(AutoEnum):
@@ -2087,13 +2047,9 @@ class MetricName(AutoEnum):
     LabelPreservation = auto()
     StudentDatasetCartography = auto()
     StudentTinyBert = alias("student-huawei-noah/TinyBERT_General_4L_312D")
-    StudentMiniLM = alias(
-        "student-all-MiniLM-L6-v2", "student-sentence-transformers/all-MiniLM-L6-v2"
-    )
+    StudentMiniLM = alias("student-all-MiniLM-L6-v2", "student-sentence-transformers/all-MiniLM-L6-v2")
     StudentDistilBERT = alias("student-distilbert-base-uncased")
-    StudentDistilBERT_AttrPromptTable13 = alias(
-        "student-distilbert-base-uncased-attrprompt-table13"
-    )
+    StudentDistilBERT_AttrPromptTable13 = alias("student-distilbert-base-uncased-attrprompt-table13")
     StudentBERT = alias("student-bert-base-uncased")
     StudentDeBERTaV3Base = alias("student-microsoft/deberta-v3-base")
     StudentDeBERTaV3Large = alias("student-microsoft/deberta-v3-large")
@@ -2104,9 +2060,7 @@ class MetricName(AutoEnum):
         "hpo-student-sentence-transformers/all-MiniLM-L6-v2",
     )
     StudentHPODistilBERT = alias("hpo-student-distilbert-base-uncased")
-    StudentHPODistilBERT_AttrPromptTable13 = alias(
-        "hpo-student-distilbert-base-uncased-attrprompt-table13"
-    )
+    StudentHPODistilBERT_AttrPromptTable13 = alias("hpo-student-distilbert-base-uncased-attrprompt-table13")
     StudentHPOBERT = alias("hpo-student-bert-base-uncased")
     StudentHPODeBERTaV3Base = alias("hpo-student-microsoft/deberta-v3-base")
     StudentHPODeBERTaV3Large = alias("hpo-student-microsoft/deberta-v3-large")
@@ -2141,7 +2095,7 @@ class MetricName(AutoEnum):
 
     @classmethod
     def from_metric(cls, metric: Metric):
-        from fmcore.framework.trainer import RowCount, SaveDatasetOrPredictions
+        from fmcore.framework._trainer import RowCount, SaveDatasetOrPredictions
         from fmcore.metric.text_generation_metrics import (
             EntityCount,
             LabelPreservation,
@@ -2182,12 +2136,8 @@ class MetricName(AutoEnum):
 
         assert isinstance(metric, TextGenerationStudent)
         if str_normalize(metric.params.algorithm) == str_normalize("pytorch"):
-            student: Student = Student(
-                metric.params.hyperparams["base_model"]["hyperparams"]["model_name"]
-            )
-        elif str_normalize(metric.params.algorithm) == str_normalize(
-            "huggingface-SequenceClassification"
-        ):
+            student: Student = Student(metric.params.hyperparams["base_model"]["hyperparams"]["model_name"])
+        elif str_normalize(metric.params.algorithm) == str_normalize("huggingface-SequenceClassification"):
             student: Student = Student(metric.params.hyperparams["model_name"])
             if student == Student.DistilBERT:
                 if metric.params.hyperparams["optimizer"]["lr"] == 2e-5:
@@ -2300,9 +2250,7 @@ class MetricName(AutoEnum):
 
         return {
             MetricName.RowCount: Metric.of("RowCount"),
-            MetricName.TextLength: Metric.of(
-                "TextLength", params=dict(tokenizer=word_tokenize)
-            ),
+            MetricName.TextLength: Metric.of("TextLength", params=dict(tokenizer=word_tokenize)),
             MetricName.EntityCount: Metric.of(
                 "EntityCount",
                 params=dict(
@@ -2379,14 +2327,10 @@ class MetricName(AutoEnum):
             test=dataset_metrics,
         )
         test_dataset: ClassificationData = (
-            SynthesizRRDataset.get(dataset_name.canonical())
-            .datasets[DataSplit.TEST]
-            .read()
+            SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.TEST].read()
         )
         num_epochs: int = get_default(num_epochs, student.num_epochs())
-        student_training_steps: int = math.ceil(
-            num_epochs * len(text_gens) / student.batch_size()
-        )
+        student_training_steps: int = math.ceil(num_epochs * len(text_gens) / student.batch_size())
 
         return Metric.of(
             "TextGenerationStudent",
@@ -2395,12 +2339,8 @@ class MetricName(AutoEnum):
                 train_text_col=train_text_col,
                 hpo=False,
                 algorithm=student.algorithm(),
-                hyperparams=student.hyperparams(
-                    training_steps=student_training_steps, student_hpo=False
-                ),
-                eval_steps=math.ceil(
-                    len(text_gens) / student.batch_size()
-                ),  ## Log once per epoch
+                hyperparams=student.hyperparams(training_steps=student_training_steps, student_hpo=False),
+                eval_steps=math.ceil(len(text_gens) / student.batch_size()),  ## Log once per epoch
                 resources_per_model=student.resources_per_model(),
                 test_num_models=student_num_models,
                 metrics=student_metrics,
@@ -2428,14 +2368,10 @@ class MetricName(AutoEnum):
             test=["RowCount", "Accuracy", "MacroF1", "ConfusionMatrix"],
         )
         test_dataset: ClassificationData = (
-            SynthesizRRDataset.get(dataset_name.canonical())
-            .datasets[DataSplit.TEST]
-            .read()
+            SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.TEST].read()
         )
         num_epochs: int = get_default(num_epochs, student.num_epochs())
-        student_training_steps: int = math.ceil(
-            num_epochs * len(text_gens) / student.hpo_batch_size()
-        )
+        student_training_steps: int = math.ceil(num_epochs * len(text_gens) / student.hpo_batch_size())
 
         if student_hpo_validation_set == "seed":
             assert val_set is not None
@@ -2443,9 +2379,7 @@ class MetricName(AutoEnum):
             val_frac: Optional[float] = None
         elif student_hpo_validation_set == "val_set":
             validation_dataset: Optional[Dataset] = (
-                SynthesizRRDataset.get(dataset_name.canonical())
-                .datasets[DataSplit.VALIDATION]
-                .read()
+                SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.VALIDATION].read()
             )
             val_frac: Optional[float] = None
         elif student_hpo_validation_set == "train_set":
@@ -2460,12 +2394,8 @@ class MetricName(AutoEnum):
                 test_dataset=test_dataset,
                 hpo=True,
                 algorithm=student.algorithm(),
-                hyperparams=student.hyperparams(
-                    training_steps=student_training_steps, student_hpo=True
-                ),
-                eval_steps=math.ceil(
-                    len(text_gens) / student.hpo_batch_size()
-                ),  ## Log once per epoch
+                hyperparams=student.hyperparams(training_steps=student_training_steps, student_hpo=True),
+                eval_steps=math.ceil(len(text_gens) / student.hpo_batch_size()),  ## Log once per epoch
                 resources_per_model=student.resources_per_model(),
                 search_algorithm=student.search_algorithm(),
                 search_space=student.search_space(student_hpo=True),
@@ -2500,14 +2430,10 @@ class MetricName(AutoEnum):
         )
 
         train_dataset: ClassificationData = (
-            SynthesizRRDataset.get(dataset_name.canonical())
-            .datasets[DataSplit.TRAIN]
-            .read()
+            SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.TRAIN].read()
         )
         test_dataset: ClassificationData = (
-            SynthesizRRDataset.get(dataset_name.canonical())
-            .datasets[DataSplit.TEST]
-            .read()
+            SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.TEST].read()
         )
         if student_training_steps is None:
             student_training_steps: int = math.ceil(
@@ -2524,9 +2450,7 @@ class MetricName(AutoEnum):
                 test_dataset=test_dataset,
                 hpo=True,
                 algorithm=student.algorithm(),
-                hyperparams=student.hyperparams(
-                    training_steps=student_training_steps, student_hpo=False
-                ),
+                hyperparams=student.hyperparams(training_steps=student_training_steps, student_hpo=False),
                 eval_steps=student_eval_steps,
                 resources_per_model=student.resources_per_model(),
                 search_algorithm=student.search_algorithm(),
@@ -2612,9 +2536,7 @@ STUDENT_TO_METRIC_NAME_MAP: Dict[Student, MetricName] = {
     Student.DeBERTaV3Base: MetricName.StudentDeBERTaV3Base,
     Student.DeBERTaV3Large: MetricName.StudentDeBERTaV3Large,
 }
-METRIC_NAME_TO_STUDENT_MAP: Dict[MetricName, Student] = {
-    v: k for k, v in STUDENT_TO_METRIC_NAME_MAP.items()
-}
+METRIC_NAME_TO_STUDENT_MAP: Dict[MetricName, Student] = {v: k for k, v in STUDENT_TO_METRIC_NAME_MAP.items()}
 
 STUDENT_HPO_TO_METRIC_NAME_MAP: Dict[Student, MetricName] = {
     Student.TinyBert: MetricName.StudentHPOTinyBert,
@@ -2654,9 +2576,7 @@ def parse_text_gens_rejection(
         split,
         get_split_prefix(dataset_name=dataset_name, expt=expt, model_name=model_name),
     )
-    if rejection_command is not None and str_normalize(
-        rejection_command
-    ) in str_normalize(gens_text):
+    if rejection_command is not None and str_normalize(rejection_command) in str_normalize(gens_text):
         return []
     for gen_text in gens_text.split(split):
         gen_text = parse_text_gen_clean(gen_text)
@@ -2664,12 +2584,10 @@ def parse_text_gens_rejection(
             yield gen_text
 
 
-def get_split_prefix(
-    *, dataset_name: DatasetName, expt: Experiment, model_name: ModelName
-) -> str:
-    replacement: Tuple[str, str] = ICL_AND_PROMPT_TEMPLATE_DICT[(dataset_name, expt)][
-        "claude_replacements"
-    ][1]
+def get_split_prefix(*, dataset_name: DatasetName, expt: Experiment, model_name: ModelName) -> str:
+    replacement: Tuple[str, str] = ICL_AND_PROMPT_TEMPLATE_DICT[(dataset_name, expt)]["claude_replacements"][
+        1
+    ]
     assert replacement[0] in {
         "News Article:",
         "Rewritten Article:",
@@ -2683,9 +2601,7 @@ def get_split_prefix(
     return replacement[0]
 
 
-def rag_hyperpartisan_news_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_hyperpartisan_news_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.HyperpartisanNews
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2695,9 +2611,7 @@ def rag_hyperpartisan_news_parse_text_gens_rejection(
     )
 
 
-def fewgen_hyperpartisan_news_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_hyperpartisan_news_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.HyperpartisanNews
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2706,9 +2620,7 @@ def fewgen_hyperpartisan_news_parse_text_gens_rejection(
     )
 
 
-def rag_toi_headlines_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_toi_headlines_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.ToiHeadlines
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2718,9 +2630,7 @@ def rag_toi_headlines_parse_text_gens_rejection(
     )
 
 
-def fewgen_toi_headlines_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_toi_headlines_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.ToiHeadlines
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2729,9 +2639,7 @@ def fewgen_toi_headlines_parse_text_gens_rejection(
     )
 
 
-def rag_ag_news_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_ag_news_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AgNews
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2741,9 +2649,7 @@ def rag_ag_news_parse_text_gens_rejection(
     )
 
 
-def fewgen_ag_news_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_ag_news_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AgNews
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2752,9 +2658,7 @@ def fewgen_ag_news_parse_text_gens_rejection(
     )
 
 
-def rag_amazon_reviews_category_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_amazon_reviews_category_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonReviewsProductCategory
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2764,9 +2668,7 @@ def rag_amazon_reviews_category_parse_text_gens_rejection(
     )
 
 
-def fewgen_amazon_reviews_category_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_amazon_reviews_category_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonReviewsProductCategory
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2775,9 +2677,7 @@ def fewgen_amazon_reviews_category_parse_text_gens_rejection(
     )
 
 
-def rag_amazon_humor_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_amazon_humor_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonHumorousProductQuestions
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2787,9 +2687,7 @@ def rag_amazon_humor_parse_text_gens_rejection(
     )
 
 
-def fewgen_amazon_humor_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_amazon_humor_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonHumorousProductQuestions
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2798,9 +2696,7 @@ def fewgen_amazon_humor_parse_text_gens_rejection(
     )
 
 
-def rag_amazon_polarity_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def rag_amazon_polarity_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonReviewsPolarity
     kwargs["expt"] = Experiment.SynthesizRR
     return parse_text_gens_rejection(
@@ -2810,9 +2706,7 @@ def rag_amazon_polarity_parse_text_gens_rejection(
     )
 
 
-def fewgen_amazon_polarity_parse_text_gens_rejection(
-    *args, **kwargs
-) -> Generator[str, None, None]:
+def fewgen_amazon_polarity_parse_text_gens_rejection(*args, **kwargs) -> Generator[str, None, None]:
     kwargs["dataset_name"] = DatasetName.AmazonReviewsPolarity
     kwargs["expt"] = Experiment.FewGen
     return parse_text_gens_rejection(
@@ -2956,9 +2850,7 @@ def parse_ag_news_gen_text(
         num_examples_this_generated_text: int = 0
         for gen_example in gen_text.strip().split("\n"):
             gen_example: str = gen_example.strip()
-            gen_example: str = (
-                gen_example.removeprefix("Article:").removeprefix("article:").strip()
-            )
+            gen_example: str = gen_example.removeprefix("Article:").removeprefix("article:").strip()
             gen_example: str = gen_example.removeprefix('"').removeprefix("'").strip()
             if gen_example.endswith('"') or gen_example.endswith("'"):
                 gen_example: str = gen_example.removesuffix('"').removesuffix("'")
@@ -3011,13 +2903,9 @@ def parse_toi_headlines_gen_text(
                 or toi_claude_gen_example.lower().startswith("thank you")
             ):
                 continue
-            if toi_claude_gen_example.startswith(
-                '"'
-            ) and not toi_claude_gen_example.endswith('"'):
+            if toi_claude_gen_example.startswith('"') and not toi_claude_gen_example.endswith('"'):
                 continue
-            if toi_claude_gen_example.startswith(
-                "'"
-            ) and not toi_claude_gen_example.endswith("'"):
+            if toi_claude_gen_example.startswith("'") and not toi_claude_gen_example.endswith("'"):
                 continue
             for prefix in (
                 [f"{x}." for x in [1, 2, 3, 4, 5]]
@@ -3025,13 +2913,9 @@ def parse_toi_headlines_gen_text(
                 + [f"({x})" for x in [1, 2, 3, 4, 5]]
                 + ["-", '"', "'"]
             ):
-                toi_claude_gen_example = toi_claude_gen_example.removeprefix(
-                    prefix
-                ).strip()
+                toi_claude_gen_example = toi_claude_gen_example.removeprefix(prefix).strip()
             for suffix in ['"', "'"]:
-                toi_claude_gen_example = toi_claude_gen_example.removesuffix(
-                    suffix
-                ).strip()
+                toi_claude_gen_example = toi_claude_gen_example.removesuffix(suffix).strip()
             toi_claude_gen_example = toi_claude_gen_example.strip()
             if len(toi_claude_gen_example) == 0:
                 continue
@@ -3062,25 +2946,15 @@ def parse_toi_headlines_gen_text(
             num_examples_this_generated_text: int = 0
             for gen_example in gen_text.strip().split("\n"):
                 gen_example: str = gen_example.strip()
-                gen_example: str = (
-                    gen_example.removeprefix("Article:")
-                    .removeprefix("article:")
-                    .strip()
-                )
-                gen_example: str = (
-                    gen_example.removeprefix("Headline:")
-                    .removeprefix("headline:")
-                    .strip()
-                )
+                gen_example: str = gen_example.removeprefix("Article:").removeprefix("article:").strip()
+                gen_example: str = gen_example.removeprefix("Headline:").removeprefix("headline:").strip()
                 if len(gen_example) == 0:
                     continue
                 if gen_example.startswith('"') and not gen_example.endswith('"'):
                     continue
                 if gen_example.startswith("'") and not gen_example.endswith("'"):
                     continue
-                gen_example: str = (
-                    gen_example.removeprefix('"').removeprefix("'").strip()
-                )
+                gen_example: str = gen_example.removeprefix('"').removeprefix("'").strip()
                 if gen_example.endswith('"') or gen_example.endswith("'"):
                     gen_example: str = gen_example.removesuffix('"').removesuffix("'")
                 elif num_examples_this_generated_text > 0:
@@ -3105,9 +2979,7 @@ def calc_label_dist(data_df: pd.DataFrame, *, label_col: str) -> pd.DataFrame:
     label_dist.name = "counts"
     label_dist.index.name = label_col
     label_dist: pd.DataFrame = label_dist.reset_index(drop=True).reset_index()
-    label_dist["pct"] = (label_dist["counts"] / label_dist["counts"].sum()).apply(
-        lambda x: f"{100 * x:.2f}%"
-    )
+    label_dist["pct"] = (label_dist["counts"] / label_dist["counts"].sum()).apply(lambda x: f"{100 * x:.2f}%")
     return label_dist
 
 
@@ -3153,9 +3025,7 @@ def check_gen_parser(
             cprint(prompt, color="light_grey")
             print()
 
-        cprint(
-            "[" + only_item(gen_df["label_text"].unique()) + "]", color="red", end=""
-        )
+        cprint("[" + only_item(gen_df["label_text"].unique()) + "]", color="red", end="")
         cprint(gen, color="black")
         print()
         colors = ["blue", "green", "red", "magenta", "cyan"]
@@ -3187,31 +3057,27 @@ class LabelPreservationModel(CachedResultsStep):
             student=label_preservation_student,
         )
         if len(label_preservation_model_dir.list()) == 0:
-            self.info(
-                f'No models found at: "{label_preservation_model_dir.path}", training...'
+            self.info(f'No models found at: "{label_preservation_model_dir.path}", training...')
+            label_preservation_student_metric_name: MetricName = MetricName.from_student(
+                label_preservation_student
             )
-            label_preservation_student_metric_name: MetricName = (
-                MetricName.from_student(label_preservation_student)
-            )
-            label_preservation_student_metric: Metric = label_preservation_student_metric_name.get_label_preservation_student_metric(
-                dataset_name=dataset_name,
-                save_to=label_preservation_model_dir,
-                student_training_steps=student_training_steps,
-                student_eval_steps=student_eval_steps,
-                verbosity=1 if self.verbosity >= 3 else 0,
+            label_preservation_student_metric: Metric = (
+                label_preservation_student_metric_name.get_label_preservation_student_metric(
+                    dataset_name=dataset_name,
+                    save_to=label_preservation_model_dir,
+                    student_training_steps=student_training_steps,
+                    student_eval_steps=student_eval_steps,
+                    verbosity=1 if self.verbosity >= 3 else 0,
+                )
             )
             train_dataset: ClassificationData = (
-                SynthesizRRDataset.get(dataset_name.canonical())
-                .datasets[DataSplit.TRAIN]
-                .read()
+                SynthesizRRDataset.get(dataset_name.canonical()).datasets[DataSplit.TRAIN].read()
             )
 
-            label_preservation_student_metric: Metric = (
-                label_preservation_student_metric.evaluate(
-                    train_dataset,
-                    rolling=False,
-                    inplace=False,
-                )
+            label_preservation_student_metric: Metric = label_preservation_student_metric.evaluate(
+                train_dataset,
+                rolling=False,
+                inplace=False,
             )
             (
                 trialwise_final_model_metrics,
@@ -3253,14 +3119,10 @@ class LabelPreservationModel(CachedResultsStep):
         trialwise_final_model_metrics: Dict[str, Metrics],
         tune_metrics: pd.DataFrame,
     ):
-        self.info(
-            f"Writing tuning metrics for dataset_name={dataset_name.canonical()}..."
-        )
+        self.info(f"Writing tuning metrics for dataset_name={dataset_name.canonical()}...")
 
-        trialwise_final_model_metrics_file: FileMetadata = (
-            dataset_name.trialwise_final_model_metrics_file(
-                label_preservation_model_dir
-            )
+        trialwise_final_model_metrics_file: FileMetadata = dataset_name.trialwise_final_model_metrics_file(
+            label_preservation_model_dir
         )
         self.info(
             f'>> Writing trialwise_final_model_metrics to "{trialwise_final_model_metrics_file.path}"...'
@@ -3270,22 +3132,14 @@ class LabelPreservationModel(CachedResultsStep):
             data=trialwise_final_model_metrics,
             overwrite=True,
         )
-        self.info(
-            f'...wrote trialwise_final_model_metrics to "{trialwise_final_model_metrics_file.path}".'
-        )
+        self.info(f'...wrote trialwise_final_model_metrics to "{trialwise_final_model_metrics_file.path}".')
 
-        tune_metrics_file: FileMetadata = dataset_name.tune_metrics_file(
-            label_preservation_model_dir
-        )
+        tune_metrics_file: FileMetadata = dataset_name.tune_metrics_file(label_preservation_model_dir)
         self.info(f'>> Writing tune_metrics to "{tune_metrics_file.path}"...')
-        Writer.of(FileFormat.PICKLE).write(
-            tune_metrics_file, data=tune_metrics, overwrite=True
-        )
+        Writer.of(FileFormat.PICKLE).write(tune_metrics_file, data=tune_metrics, overwrite=True)
         self.info(f'...wrote tune_metrics to "{tune_metrics_file.path}".')
 
-        self.info(
-            f"...done writing tuning metrics for dataset_name={dataset_name.canonical()}."
-        )
+        self.info(f"...done writing tuning metrics for dataset_name={dataset_name.canonical()}.")
 
     def _load_tuning_metrics(
         self,
@@ -3293,33 +3147,23 @@ class LabelPreservationModel(CachedResultsStep):
         dataset_name: DatasetName,
         label_preservation_model_dir: FileMetadata,
     ) -> Dict:
-        self.info(
-            f"Loading tuning metrics for dataset_name={dataset_name.canonical()}..."
-        )
+        self.info(f"Loading tuning metrics for dataset_name={dataset_name.canonical()}...")
 
-        trialwise_final_model_metrics_file: FileMetadata = (
-            dataset_name.trialwise_final_model_metrics_file(
-                label_preservation_model_dir
-            )
+        trialwise_final_model_metrics_file: FileMetadata = dataset_name.trialwise_final_model_metrics_file(
+            label_preservation_model_dir
         )
-        trialwise_final_model_metrics: Dict[str, Metrics] = Reader.of(
-            FileFormat.PICKLE
-        ).read(trialwise_final_model_metrics_file)
+        trialwise_final_model_metrics: Dict[str, Metrics] = Reader.of(FileFormat.PICKLE).read(
+            trialwise_final_model_metrics_file
+        )
         self.info(
             f'>> Loaded trialwise_final_model_metrics from "{trialwise_final_model_metrics_file.path}".'
         )
 
-        tune_metrics_file: FileMetadata = dataset_name.tune_metrics_file(
-            label_preservation_model_dir
-        )
-        tune_metrics: pd.DataFrame = Reader.of(FileFormat.PICKLE).read(
-            tune_metrics_file
-        )
+        tune_metrics_file: FileMetadata = dataset_name.tune_metrics_file(label_preservation_model_dir)
+        tune_metrics: pd.DataFrame = Reader.of(FileFormat.PICKLE).read(tune_metrics_file)
         self.info(f'>> Loaded tune_metrics from "{tune_metrics_file.path}".')
 
-        self.info(
-            f"...done loading tuning metrics for dataset_name={dataset_name.canonical()}."
-        )
+        self.info(f"...done loading tuning metrics for dataset_name={dataset_name.canonical()}.")
         return dict(
             trialwise_final_model_metrics=trialwise_final_model_metrics,
             tune_metrics=tune_metrics,
@@ -3339,53 +3183,34 @@ def get_templates_and_hashes(
         model_name=model_name,
     )
     if icl_template is not None:
-        icl_template_hash: str = StringUtil.hash(
-            punct_normalize(icl_template), max_len=6
-        )
+        icl_template_hash: str = StringUtil.hash(punct_normalize(icl_template), max_len=6)
     else:
         icl_template: str = icl_and_prompt_template["icl_template"]
-        icl_template_hash: Optional[str] = (
-            None  ## Picking the default, do not add the hash.
-        )
+        icl_template_hash: Optional[str] = None  ## Picking the default, do not add the hash.
     if prompt_template is not None:
-        prompt_template_hash: str = StringUtil.hash(
-            punct_normalize(prompt_template), max_len=6
-        )
+        prompt_template_hash: str = StringUtil.hash(punct_normalize(prompt_template), max_len=6)
     else:
         prompt_template: str = icl_and_prompt_template["prompt_template"]
-        prompt_template_hash: Optional[str] = (
-            None  ## Picking the default, do not add the hash.
-        )
+        prompt_template_hash: Optional[str] = None  ## Picking the default, do not add the hash.
     return icl_template, icl_template_hash, prompt_template, prompt_template_hash
 
 
 class DatasetFilterParams(Parameters):
     filter_type: Literal["none", "cartography"]
     cartography_apply: Literal["overall", "label"] = "label"
-    cartography_confidence_range: Optional[
-        Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]
-    ] = None
-    cartography_confidence_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_confidence_range: Optional[Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = None
+    cartography_confidence_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
-    cartography_variability_range: Optional[
-        Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]
-    ] = None
-    cartography_variability_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_variability_range: Optional[Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = None
+    cartography_variability_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
-    cartography_correctness_range: Optional[
-        Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]
-    ] = None
-    cartography_correctness_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_correctness_range: Optional[Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = None
+    cartography_correctness_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
+    @model_validator(mode="before")
     @classmethod
-    @root_validator(pre=False)
     def check_params(cls, params: Dict) -> Dict:
+        cls.set_default_param_values(params)
         if params["filter_type"] == "cartography":
             if all_are_none(
                 params["cartography_confidence_range"],
@@ -3395,52 +3220,35 @@ class DatasetFilterParams(Parameters):
                 params["cartography_correctness_range"],
                 params["cartography_correctness_frac"],
             ):
-                raise ValueError(
-                    "At least one of the dataset cartography filters must be specified."
-                )
+                raise ValueError("At least one of the dataset cartography filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_confidence_range"],
                 params["cartography_confidence_frac"],
             ):
-                raise ValueError(
-                    "At most one of the confidence filters must be specified."
-                )
+                raise ValueError("At most one of the confidence filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_variability_range"],
                 params["cartography_variability_frac"],
             ):
-                raise ValueError(
-                    "At most one of the variability filters must be specified."
-                )
+                raise ValueError("At most one of the variability filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_correctness_range"],
                 params["cartography_correctness_frac"],
             ):
-                raise ValueError(
-                    "At most one of the correctness filters must be specified."
-                )
+                raise ValueError("At most one of the correctness filters must be specified.")
 
-    cartography_confidence_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_confidence_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
-    cartography_variability_range: Optional[
-        Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]
-    ] = None
-    cartography_variability_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_variability_range: Optional[Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = None
+    cartography_variability_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
-    cartography_correctness_range: Optional[
-        Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]
-    ] = None
-    cartography_correctness_frac: Optional[
-        Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]
-    ] = None
+    cartography_correctness_range: Optional[Tuple[confloat(ge=0.0, le=1.0), confloat(ge=0.0, le=1.0)]] = None
+    cartography_correctness_frac: Optional[Tuple[Literal["top", "bottom"], confloat(ge=0.0, le=1.0)]] = None
 
+    @model_validator(mode="before")
     @classmethod
-    @root_validator(pre=False)
-    def check_params(cls, params: Dict) -> Dict:
+    def _check_params(cls, params: Dict) -> Dict:
+        cls.set_default_param_values(params)
         if params["filter_type"] == "cartography":
             if all_are_none(
                 params["cartography_confidence_range"],
@@ -3450,30 +3258,22 @@ class DatasetFilterParams(Parameters):
                 params["cartography_correctness_range"],
                 params["cartography_correctness_frac"],
             ):
-                raise ValueError(
-                    "At least one of the dataset cartography filters must be specified."
-                )
+                raise ValueError("At least one of the dataset cartography filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_confidence_range"],
                 params["cartography_confidence_frac"],
             ):
-                raise ValueError(
-                    "At most one of the confidence filters must be specified."
-                )
+                raise ValueError("At most one of the confidence filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_variability_range"],
                 params["cartography_variability_frac"],
             ):
-                raise ValueError(
-                    "At most one of the variability filters must be specified."
-                )
+                raise ValueError("At most one of the variability filters must be specified.")
             if multiple_are_not_none(
                 params["cartography_correctness_range"],
                 params["cartography_correctness_frac"],
             ):
-                raise ValueError(
-                    "At most one of the correctness filters must be specified."
-                )
+                raise ValueError("At most one of the correctness filters must be specified.")
         return params
 
     def save_key(
@@ -3483,9 +3283,7 @@ class DatasetFilterParams(Parameters):
         dataset_cartography_text_col: str,
     ) -> str:
         filter_params: Dict = remove_nulls(self.dict())
-        filter_params["dataset_cartography_student"] = (
-            dataset_cartography_student.canonical()
-        )
+        filter_params["dataset_cartography_student"] = dataset_cartography_student.canonical()
         filter_params["dataset_cartography_text_col"] = dataset_cartography_text_col
         return StringUtil.stringify(filter_params)
 
