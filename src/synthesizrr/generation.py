@@ -2,13 +2,19 @@ import gc
 import math
 import time
 from abc import ABC
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from collections import Counter
+from math import inf
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
+from autoenum import AutoEnum, auto
 from bears.util import (
+    Parameters,
     StringUtil,
     Timer,
     accumulate_iter,
+    as_list,
     check_isinstance,
     get_default,
     is_list_like,
@@ -2510,3 +2516,623 @@ class SynthesizRR(LLMEvaluatorStep):
             )
             .update_params(file_format=FileFormat.PARQUET)
         )
+
+
+# =============================================================================
+# Contrastive Logits Processors
+# =============================================================================
+
+try:
+    import torch
+    from transformers import LogitsProcessor
+
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    LogitsProcessor = object  # Placeholder for type hints
+
+
+class Contrast(AutoEnum):
+    current = auto()
+    cross_label = auto()
+    intra_label = auto()
+
+
+class ContrastCombo(Parameters):
+    idx: int
+    label: str
+    rep: int
+    contrast: Contrast
+    guidance: Optional[float] = None
+
+
+@safe_validate_arguments
+def all_contrast_combos(
+        contrasts: Tuple[Contrast, ...],
+        *,
+        labelspace: Tuple[str, ...],
+        current_guidance: float,
+        contrast_guidance: Optional[Dict[Contrast, Union[float, Dict[str, Dict[str, float]]]]],
+        cross_to_intra_label_guidance_ratio: confloat(ge=0.0),
+        guidance_strategy: str,
+        guidance_delta: float,
+        eos_strategy: str,
+        corr_repeats: int,
+        is_completed: np.ndarray,
+) -> Generator[Tuple[ContrastCombo, List[ContrastCombo]], None, None]:
+    contrasts: Tuple[Contrast, ...] = tuple(sorted(Contrast.convert_list(as_list(contrasts))))
+    assert len(contrasts) > 0
+    labelspace: Tuple[str, ...] = tuple(sorted(labelspace))
+    contrast_space: List[ContrastCombo] = make_contrast_space(  ## One "unit"
+        contrasts=contrasts,
+        labelspace=labelspace,
+        corr_repeats=corr_repeats,
+    )
+    if set(contrasts) == {Contrast.intra_label, Contrast.cross_label}:
+        """
+        contrast_space is:
+         ContrastCombo(key='Business###0'),     <--- 2.4 (current)
+         ContrastCombo(key='Business###1'),     <--- -0.6
+         ContrastCombo(key='Business###2'),     <--- -0.6
+
+         ContrastCombo(key='Sci/Tech###0'),     <--- -(0.4/3)
+         ContrastCombo(key='Sci/Tech###1'),     <--- -(0.4/3)
+         ContrastCombo(key='Sci/Tech###2'),     <--- -(0.4/3)
+
+         ContrastCombo(key='Sports###0'),       <--- -(0.4/3)
+         ContrastCombo(key='Sports###1'),       <--- -(0.4/3)
+         ContrastCombo(key='Sports###2'),       <--- -(0.4/3)
+
+         ContrastCombo(key='World###0'),        <--- -(0.4/3)
+         ContrastCombo(key='World###1'),        <--- -(0.4/3)
+         ContrastCombo(key='World###2'),        <--- -(0.4/3)
+        """
+        for cur_combo_i, cur_combo in enumerate(contrast_space):
+            cur_combo: ContrastCombo = cur_combo.update_params(
+                guidance=current_guidance,
+            )
+            cur_contrast_combos: List[ContrastCombo] = cur_combo_contrasts(
+                contrasts=contrasts,
+                cur_combo=cur_combo,
+                contrast_space=contrast_space,
+                is_selected={
+                    Contrast.intra_label: intra_label_is_selected,
+                    Contrast.cross_label: cross_label_is_selected,
+                },
+                cross_to_intra_label_guidance_ratio=cross_to_intra_label_guidance_ratio,
+                guidance_strategy=guidance_strategy,
+                current_guidance=current_guidance,
+                guidance_delta=guidance_delta,
+                eos_strategy=eos_strategy,
+                corr_repeats=corr_repeats,
+                is_completed=is_completed,
+                contrast_guidance=contrast_guidance,
+            )
+            yield cur_combo, cur_contrast_combos
+    elif set(contrasts) == {Contrast.intra_label}:
+        """
+        contrast_space is:
+         ContrastCombo(key='Business###0'),     <--- 2.4 (current)
+         ContrastCombo(key='Business###1'),     <--- -1.2
+         ContrastCombo(key='Business###2'),     <--- -1.2
+
+         ContrastCombo(key='Sci/Tech###0'),     <--- -0.0
+         ContrastCombo(key='Sci/Tech###1'),     <--- -0.0
+         ContrastCombo(key='Sci/Tech###2'),     <--- -0.0
+
+         ContrastCombo(key='Sports###0'),       <--- -0.0
+         ContrastCombo(key='Sports###1'),       <--- -0.0
+         ContrastCombo(key='Sports###2'),       <--- -0.0
+
+         ContrastCombo(key='World###0'),        <--- -0.0
+         ContrastCombo(key='World###1'),        <--- -0.0
+         ContrastCombo(key='World###2'),        <--- -0.0
+        """
+        for cur_combo_i, cur_combo in enumerate(contrast_space):
+            cur_combo: ContrastCombo = cur_combo.update_params(
+                guidance=current_guidance,
+            )
+            cur_contrast_combos: List[ContrastCombo] = cur_combo_contrasts(
+                contrasts=contrasts,
+                cur_combo=cur_combo,
+                contrast_space=contrast_space,
+                is_selected={
+                    Contrast.intra_label: intra_label_is_selected,
+                },
+                cross_to_intra_label_guidance_ratio=cross_to_intra_label_guidance_ratio,
+                guidance_strategy=guidance_strategy,
+                current_guidance=current_guidance,
+                guidance_delta=guidance_delta,
+                eos_strategy=eos_strategy,
+                corr_repeats=corr_repeats,
+                is_completed=is_completed,
+                contrast_guidance=contrast_guidance,
+            )
+            yield cur_combo, cur_contrast_combos
+    elif set(contrasts) == {Contrast.cross_label}:
+        """
+        contrast_space is:
+         ContrastCombo(key='Business###0'),     <--- 2.4 (current)
+         ContrastCombo(key='Business###1'),     <--- -0.0
+         ContrastCombo(key='Business###2'),     <--- -0.0
+
+         ContrastCombo(key='Sci/Tech###0'),     <--- -(0.8/3)
+         ContrastCombo(key='Sci/Tech###1'),     <--- -(0.8/3)
+         ContrastCombo(key='Sci/Tech###2'),     <--- -(0.8/3)
+
+         ContrastCombo(key='Sports###0'),       <--- -(0.8/3)
+         ContrastCombo(key='Sports###1'),       <--- -(0.8/3)
+         ContrastCombo(key='Sports###2'),       <--- -(0.8/3)
+
+         ContrastCombo(key='World###0'),        <--- -(0.8/3)
+         ContrastCombo(key='World###1'),        <--- -(0.8/3)
+         ContrastCombo(key='World###2'),        <--- -(0.8/3)
+        """
+        for cur_combo_i, cur_combo in enumerate(contrast_space):
+            cur_combo: ContrastCombo = cur_combo.update_params(
+                guidance=current_guidance,
+            )
+            cur_contrast_combos: List[ContrastCombo] = cur_combo_contrasts(
+                contrasts=contrasts,
+                cur_combo=cur_combo,
+                contrast_space=contrast_space,
+                is_selected={
+                    Contrast.cross_label: cross_label_is_selected,
+                },
+                cross_to_intra_label_guidance_ratio=cross_to_intra_label_guidance_ratio,
+                guidance_strategy=guidance_strategy,
+                current_guidance=current_guidance,
+                guidance_delta=guidance_delta,
+                eos_strategy=eos_strategy,
+                corr_repeats=corr_repeats,
+                is_completed=is_completed,
+                contrast_guidance=contrast_guidance,
+            )
+            yield cur_combo, cur_contrast_combos
+    else:
+        raise not_impl('contrasts', contrasts)
+
+
+def print_cur_combo(
+        *,
+        cur_combo: ContrastCombo,
+        cur_contrast_combos: List[ContrastCombo],
+):
+    print('=' * 80)
+    print(f'Current {cur_combo}')
+    print(f'\n\nWe contrast with {len(cur_contrast_combos)} combinations:')
+    for _ in cur_contrast_combos:
+        print(_)
+
+
+@safe_validate_arguments
+def make_contrast_space(
+        contrasts: Tuple[Contrast, ...],
+        *,
+        labelspace: Tuple[str, ...],
+        corr_repeats: int = 1,
+) -> List[ContrastCombo]:
+    """
+    - These combinations lay out the order of the "unit" of size `contrast_unit_size`. In this LogitsProcessor, this is
+        not directly used (except for debugging), but it is important as it tells us the
+    - We can have multiple units of size `contrast_unit_size` in the same LM inference, i.e.
+        num_units = B / contrast_unit_size. We must handle this case
+    """
+    contrasts: Tuple[Contrast, ...] = tuple(sorted(Contrast.convert_list(as_list(contrasts))))
+    assert len(contrasts) > 0
+    labelspace: List[str] = sorted(labelspace)
+
+    contrast_space: List[ContrastCombo] = []
+    for lb in labelspace:
+        for rep in range(corr_repeats):
+            contrast_space.append(ContrastCombo(
+                idx=len(contrast_space),
+                label=lb,
+                rep=rep,
+                contrast=Contrast.current,
+            ))
+    assert len(contrast_space) > 0
+    return contrast_space
+
+
+def contrast_guidance_for_combo(
+        *,
+        contrasts: Tuple[Contrast, ...],
+        contrast: Contrast,
+        cur_combo: ContrastCombo,
+        cont_combo: ContrastCombo,
+        current_guidance: float,
+        guidance_delta: float,
+        contrast_guidance: Optional[Dict[Contrast, Union[float, Dict[str, Dict[str, float]]]]],
+        contrast_num_active: int,
+        contrast_num_selected: int,
+        corr_repeats: int,
+        cross_to_intra_label_guidance_ratio: confloat(ge=0.0),
+        guidance_strategy: str,
+) -> float:
+    if contrast_guidance is None:
+        ## Contrast guidance not set, infer it:
+        return round(infer_contrast_guidance(
+            contrasts=contrasts,
+            contrast=contrast,
+            current_guidance=current_guidance,
+            guidance_delta=guidance_delta,
+            contrast_num_active=contrast_num_active,
+            contrast_num_selected=contrast_num_selected,
+            corr_repeats=corr_repeats,
+            cross_to_intra_label_guidance_ratio=cross_to_intra_label_guidance_ratio,
+            guidance_strategy=guidance_strategy,
+        ), 6)
+    if isinstance(contrast_guidance[contrast], float):
+        return contrast_guidance[contrast]
+    elif isinstance(contrast_guidance[contrast], dict):
+        return contrast_guidance[contrast][cur_combo.label][cont_combo.label]
+    else:
+        raise not_impl('contrast_guidance', contrast_guidance)
+
+
+@safe_validate_arguments
+def infer_contrast_guidance(
+        *,
+        contrasts: Tuple[Contrast, ...],
+        contrast: Contrast,
+        current_guidance: float,
+        guidance_delta: float,
+        contrast_num_active: int,
+        contrast_num_selected: int,
+        corr_repeats: int,
+        cross_to_intra_label_guidance_ratio: confloat(ge=0.0),  ## odds(A) = P(A) / P(!A). Here A = cross_label
+        guidance_strategy: str,
+) -> float:
+    if guidance_strategy == 'contrasts_sum_to_current':
+        total_contrast_guidance: float = current_guidance
+    elif guidance_strategy == 'contrasts_sum_to_current_minus_delta':
+        total_contrast_guidance: float = current_guidance - guidance_delta
+    else:
+        raise not_impl('guidance_strategy', guidance_strategy)
+
+    if guidance_strategy in {'contrasts_sum_to_current', 'contrasts_sum_to_current_minus_delta'}:
+        if set(contrasts) == {Contrast.intra_label, Contrast.cross_label}:
+            assert contrast_num_selected > 0  ## Number of selected combos in current contrast
+            ## P(A) = odds(A)/(1+odds(A))
+            if cross_to_intra_label_guidance_ratio == 0.0:
+                cross_guidance_frac: float = 0.0
+                intra_guidance_frac: float = 1.0
+            elif cross_to_intra_label_guidance_ratio == inf:
+                cross_guidance_frac: float = 1.0
+                intra_guidance_frac: float = 0.0
+            else:
+                cross_guidance_frac: float = cross_to_intra_label_guidance_ratio / (1 + cross_to_intra_label_guidance_ratio)
+                intra_guidance_frac: float = (1 - cross_guidance_frac)
+            assert 0.0 <= cross_guidance_frac <= 1.0
+            assert 0.0 <= intra_guidance_frac <= 1.0
+            if contrast is Contrast.intra_label:
+                return (intra_guidance_frac * total_contrast_guidance) / contrast_num_selected
+            else:
+                assert contrast is Contrast.cross_label
+                return (cross_guidance_frac * total_contrast_guidance) / contrast_num_selected
+        elif set(contrasts) == {Contrast.intra_label}:
+            return total_contrast_guidance / contrast_num_selected
+        elif set(contrasts) == {Contrast.cross_label}:
+            return total_contrast_guidance / contrast_num_selected
+        else:
+            raise not_impl('contrast', contrast)
+    else:
+        raise not_impl('guidance_strategy', guidance_strategy)
+
+
+def intra_label_is_selected(
+        *,
+        cur_combo: ContrastCombo,
+        cont_combo: ContrastCombo,
+) -> bool:
+    return cur_combo.idx != cont_combo.idx and cont_combo.label == cur_combo.label and cont_combo.rep != cur_combo.rep
+
+
+def cross_label_is_selected(
+        *,
+        cur_combo: ContrastCombo,
+        cont_combo: ContrastCombo,
+) -> bool:
+    return cur_combo.idx != cont_combo.idx and cont_combo.label != cur_combo.label
+
+
+@safe_validate_arguments
+def cur_combo_contrasts(
+        *,
+        cur_combo: ContrastCombo,
+        contrasts: Tuple[Contrast, ...],
+        contrast_space: List[ContrastCombo],
+        is_selected: Dict[Contrast, Callable],
+        cross_to_intra_label_guidance_ratio: confloat(ge=0.0),
+        current_guidance: float,
+        guidance_delta: float,
+        guidance_strategy: str,
+        eos_strategy: str,
+        corr_repeats: int,
+        is_completed: np.ndarray,
+        contrast_guidance: Optional[Dict[Contrast, Union[float, Dict[str, Dict[str, float]]]]],
+) -> List[ContrastCombo]:
+    contrasts: Tuple[Contrast, ...] = tuple(sorted(contrasts))
+    cur_selected_combos: Dict[Contrast, List[ContrastCombo]] = {}
+    cur_active_combos: Dict[Contrast, List[ContrastCombo]] = {}
+    for contrast in contrasts:
+        cont_is_selected: Callable = is_selected[contrast]
+        selected_cont_combos: List[ContrastCombo] = [
+            cont_combo.update_params(
+                contrast=contrast,
+            )
+            for cont_combo in contrast_space
+            if cont_is_selected(cur_combo=cur_combo, cont_combo=cont_combo)
+        ]
+        cur_selected_combos[contrast] = selected_cont_combos
+
+        ## If the combo should be selected, and it is not completed, we call it "active" for this time-step:
+        active_cont_combos: List[ContrastCombo] = [
+            cont_combo
+            for cont_combo in selected_cont_combos
+            if not bool(is_completed[cont_combo.idx])
+        ]
+        ## Set guidance for active combos:
+        active_cont_combos_with_guidance: List[ContrastCombo] = [
+            cont_combo.update_params(
+                guidance=contrast_guidance_for_combo(
+                    contrasts=contrasts,
+                    contrast=contrast,
+                    cur_combo=cur_combo,
+                    cont_combo=cont_combo,
+                    current_guidance=current_guidance,
+                    guidance_delta=guidance_delta,
+                    contrast_guidance=contrast_guidance,
+                    contrast_num_active=len(active_cont_combos),
+                    contrast_num_selected=len(selected_cont_combos),
+                    corr_repeats=corr_repeats,
+                    cross_to_intra_label_guidance_ratio=cross_to_intra_label_guidance_ratio,
+                    guidance_strategy=guidance_strategy,
+                )
+            )
+            for cont_combo in active_cont_combos
+        ]
+        cur_active_combos[contrast] = active_cont_combos_with_guidance
+
+    cur_active_combos_flattened: List[ContrastCombo] = []
+    for contrast in contrasts:
+        cur_active_combos_flattened.extend(cur_active_combos[contrast])
+    ## All should be unique, no double-counting:
+    if len(cur_active_combos_flattened) != len({cont_combo.idx for cont_combo in cur_active_combos_flattened}):
+        raise ValueError(
+            f'Found following distribution of combo-indexes (expected all to be unique):\n'
+            f'{pd.Series([cont_combo.idx for cont_combo in cur_active_combos_flattened]).value_counts()}'
+        )
+
+    total_num_selected: int = sum([
+        len(cur_selected_combos)
+        for contrast, cur_selected_combos in cur_selected_combos.items()
+    ])
+    total_num_active: int = sum([
+        len(cur_active_combos)
+        for contrast, cur_active_combos in cur_active_combos.items()
+    ])
+    assert total_num_active <= total_num_selected
+    if total_num_active == 0:
+        return []
+    if total_num_active == total_num_selected:
+        return cur_active_combos_flattened
+
+    if eos_strategy == 'drop_completed':
+        return cur_active_combos_flattened
+    elif eos_strategy == 'upweight_active':
+        ## Some are not active at this time-step, rescale guidances among active combos:
+        return [
+            cont_combo.update_params(
+                guidance=cont_combo.guidance * (total_num_selected / total_num_active)
+            )
+            for cont_combo in cur_active_combos_flattened
+        ]
+    raise not_impl('eos_strategy', eos_strategy)
+
+
+class FewShotGenerationLogitsProcessor(LogitsProcessor):
+    def __init__(
+            self,
+            *,
+            plausibility_constraint: Optional[confloat(ge=0.0, le=1.0)],
+    ):
+        assert plausibility_constraint is not None
+        self.plausibility_constraint: confloat(ge=0.0, le=1.0) = plausibility_constraint
+
+    def __call__(self, input_ids: "torch.LongTensor", scores: "torch.FloatTensor") -> "torch.Tensor":
+        """
+        `input_ids` is B * sequence_length
+          - It is padded from left, i.e. might start with <PAD> tokens (or <EOS> if it is the same as <PAD>).
+
+        `scores` is B * vocab_size.
+          - This logits, not log-probs...so it has token-logits between (-inf, +inf), based on what the LM thinks. An
+          annoying consequence of this is that -inf actually turns up frequently (indicating a token will have zero prob
+          after softmax), and it's hard to do artithmetic with that. So, we end up
+
+        `B` i.e. the number of rows, is laid out as num_units * contrast_unit_size,
+          - contrast_unit_size is calculated as all possible combinations of "contrasts".
+        """
+        if self.plausibility_constraint > 0.0:
+            ## Set all tokens except the ones which do not meet the constraint to -inf:
+            probs: torch.Tensor = scores.softmax(dim=-1)
+            rowwise_max_probs: torch.Tensor = self.plausibility_constraint * probs.max(dim=-1).values.unsqueeze(1)
+            scores_not_plausible_idx: torch.Tensor = (probs < rowwise_max_probs)
+            scores[scores_not_plausible_idx] = -inf
+        return scores
+
+
+class ContrastiveLogitsProcessor(LogitsProcessor):
+    def __init__(
+            self,
+            *,
+            contrasts: Tuple[Contrast, ...],
+            corr_repeats: conint(ge=1) = 1,
+            plausibility_constraint: confloat(ge=0.0, le=1.0) = 0.0,
+
+            ## Guidance strength for "current" combination:
+            current_guidance: confloat(ge=0.0),
+            ## Guidance strength for "contrast" combination. Can be specified as dict or float (if None, it is inferred):
+            contrast_guidance: Optional[Dict[Contrast, Union[float, Dict]]] = None,
+            ## Default: current guidance is exceeds sum of contrasts by 1.0:
+            guidance_delta: confloat(allow_inf_nan=False) = 1.0,
+            ## When inferring, this balances intra- and cross-label guidances:
+            cross_to_intra_label_guidance_ratio: confloat(ge=0.0) = 1.0,
+            ## Strategy used while inferring:
+            guidance_strategy: str,
+            ## Strategy used while inferring:
+            eos_strategy: str,
+
+            bos_token_id: int,
+            eos_token_id: int,
+            pad_token_id: int,
+            label_verbalizer: Dict[str, str],
+
+    ):
+        ## Number of times to contrast generations within the same label.
+        self.contrasts: Tuple[Contrast, ...] = tuple(sorted(Contrast.convert_list(as_list(contrasts))))
+        self.labelspace: Tuple[str, ...] = tuple(sorted(label_verbalizer.keys()))
+        self.corr_repeats = corr_repeats
+        self.bos_token_id: int = bos_token_id
+        self.eos_token_id: int = eos_token_id
+        self.pad_token_id: int = pad_token_id
+
+        self.contrast_space: List[ContrastCombo] = make_contrast_space(
+            contrasts=self.contrasts,
+            labelspace=self.labelspace,
+            corr_repeats=self.corr_repeats,
+        )
+
+        if isinstance(current_guidance, (int, float)):
+            current_guidance: float = float(current_guidance)
+            assert current_guidance >= 0.0
+        else:
+            raise not_impl('current_guidance', current_guidance)
+        self.current_guidance: float = round(float(current_guidance), 6)
+        assert 0.0 <= plausibility_constraint <= 1.0
+        self.contrast_guidance: Optional[Dict[Contrast, Union[float, Dict]]] = contrast_guidance
+        self.cross_to_intra_label_guidance_ratio: confloat(ge=0.0) = cross_to_intra_label_guidance_ratio
+        self.guidance_delta: float = guidance_delta
+
+        assert guidance_strategy in {
+            'contrasts_sum_to_current',
+            'contrasts_sum_to_current_minus_delta',
+        }
+        self.guidance_strategy: str = guidance_strategy
+
+        self.plausibility_constraint: confloat(ge=0.0, le=1.0) = plausibility_constraint
+        assert eos_strategy in {
+            'drop_completed',
+            'upweight_active',
+        }
+        self.eos_strategy: str = eos_strategy
+
+    def __call__(self, input_ids: "torch.LongTensor", scores: "torch.FloatTensor") -> "torch.Tensor":
+        """
+        `input_ids` is B * sequence_length
+          - It is padded from left, i.e. might start with <PAD> tokens (or <EOS> if it is the same as <PAD>).
+
+        `scores` is B * vocab_size.
+          - This logits, not log-probs...so it has token-logits between (-inf, +inf), based on what the LM thinks. An
+          annoying consequence of this is that -inf actually turns up frequently (indicating a token will have zero prob
+          after softmax), and it's hard to do artithmetic with that. So, we end up
+
+        `B` i.e. the number of rows, is laid out as num_units * contrast_unit_size,
+          - contrast_unit_size is calculated as all possible combinations of "contrasts".
+        """
+        contrast_unit_size: int = len(self.contrast_space)
+        assert input_ids.shape[0] == scores.shape[0]
+        if input_ids.shape[0] % contrast_unit_size != 0:
+            raise ValueError(
+                f'Expected number of input_ids to be equal to contrast_unit_size; '
+                f'found contrast_unit_size={contrast_unit_size}, input_ids.shape[0]={input_ids.shape[0]}'
+            )
+        vocab_size: int = scores.shape[1]
+        num_units: int = input_ids.shape[0] // contrast_unit_size
+        error_msg: str = ''
+
+        new_corr_scores_list: List[torch.Tensor] = []
+        ## is_completed vector checks if the last-generated token is EOS.
+        is_completed: np.ndarray = ((input_ids[:, -1]).cpu().detach().numpy() == self.eos_token_id)
+        ## Rescale scores the scores of each "batch" according to contrast:
+        for unit_idx, (corr_is_completed, corr_scores) in enumerate(
+                zip(
+                    np.split(is_completed, num_units),
+                    scores.split(contrast_unit_size, dim=0),
+                )
+        ):
+            assert isinstance(corr_is_completed, np.ndarray) and corr_is_completed.ndim == 1
+            assert corr_is_completed.shape[0] == contrast_unit_size
+            assert isinstance(corr_scores, torch.Tensor) and len(corr_scores.shape) == 2
+            assert corr_scores.shape[0] == contrast_unit_size
+
+            ## Clone the tensor while keeping it on the same device.
+            new_corr_scores: torch.Tensor = corr_scores.detach().clone()
+            ## Ref: https://discuss.pytorch.org/t/clone-and-detach-in-v0-4-0/16861?u=gebbissimo
+            combos_processed: Counter = Counter()
+            for cur_combo, cur_contrast_combos in all_contrast_combos(
+                    contrasts=self.contrasts,
+                    labelspace=self.labelspace,
+                    current_guidance=self.current_guidance,
+                    guidance_delta=self.guidance_delta,
+                    contrast_guidance=self.contrast_guidance,
+                    cross_to_intra_label_guidance_ratio=self.cross_to_intra_label_guidance_ratio,
+                    guidance_strategy=self.guidance_strategy,
+                    eos_strategy=self.eos_strategy,
+                    corr_repeats=self.corr_repeats,
+                    is_completed=is_completed,
+            ):
+                combos_processed[cur_combo.idx] += 1
+                if bool(is_completed[cur_combo.idx]):
+                    continue  ## The current combination is done generating, do not contrast it.
+
+                ## Adaptive plausibility constraint from contrastive decoding: https://arxiv.org/abs/2210.15097
+                if self.plausibility_constraint > 0.0:
+                    ## Set all tokens except the ones which do not meet the constraint to -inf:
+                    cur_combo_probs: torch.Tensor = corr_scores[cur_combo.idx, :].softmax(dim=-1)
+                    new_corr_scores[
+                        cur_combo.idx,
+                        cur_combo_probs < (self.plausibility_constraint * cur_combo_probs.max())
+                    ] = -inf
+
+                ## Upweight by positive guidance.
+                new_corr_scores[cur_combo.idx, :] *= self.current_guidance
+                ## In case cur_contrast_combos is an empty list (i.e. we have no contrasts), we end up with temperature sampling
+                for cont_combo in cur_contrast_combos:
+                    if cont_combo.guidance == 0.0:  ## Skip in case of no-op; saves many FLOPS when we have several classes!
+                        continue
+                    ## cur_combo: numerator
+                    ## cont_combo: each entry of denominator
+                    ## Only subtract where cur_combo logits are finite. Avoids problems related to (-inf - (-inf)) giving nan
+                    finite_mask: torch.Tensor = torch.isfinite(new_corr_scores[cur_combo.idx, :])
+                    to_subtract: torch.Tensor = cont_combo.guidance * corr_scores[cont_combo.idx, :]
+                    new_corr_scores[cur_combo.idx, :][finite_mask] -= (to_subtract)[finite_mask]
+                    if float(torch.isnan(new_corr_scores[cur_combo.idx, :][finite_mask]).sum()) > 0:
+                        error_msg += f'Found nan(s) in new_corr_scores[{cur_combo.idx}, :][finite_mask] having shape ' \
+                                     f'{new_corr_scores[cur_combo.idx, :][finite_mask].shape}:\n' \
+                                     f'{torch.isnan(new_corr_scores[cur_combo.idx, :][finite_mask].sum())}'
+            if len(combos_processed) != new_corr_scores.shape[0] or \
+                    len([v for v in combos_processed.values() if v > 1]) > 0:
+                raise ValueError(
+                    f'Expected each index to tbe processed exactly once; '
+                    f'however, found following processing (index -> #processes): {combos_processed}'
+                )
+            new_corr_scores_list.append(new_corr_scores)
+        new_scores: torch.Tensor = torch.cat(new_corr_scores_list, dim=0)
+        if float(torch.isnan(new_scores).sum(dim=-1).sum()) > 0:
+            error_msg += 'Found nan:' + scores_nan_inf_str(scores, name='Orig') + scores_nan_inf_str(new_scores, name='New')
+        if float(torch.isposinf(new_scores).sum(dim=-1).sum()) > 0:
+            error_msg += 'Found +inf:' + scores_nan_inf_str(scores, name='Orig') + scores_nan_inf_str(new_scores, name='New')
+        if error_msg != '':
+            raise ValueError(error_msg)
+        return new_scores
+
+
+def scores_nan_inf_str(scores: "torch.Tensor", name: str, ) -> str:
+    out: str = '\n'
+    out += f'{name} scores shape: {scores.shape}\n'
+    out += f'{name} scores nans: {torch.isnan(scores).sum(dim=-1)}\n'
+    out += f'{name} scores posinf: {torch.isposinf(scores).sum(dim=-1)}\n'
+    out += f'{name} scores neginf: {torch.isneginf(scores).sum(dim=-1)}\n'
+    return out
